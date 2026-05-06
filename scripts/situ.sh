@@ -9,11 +9,12 @@ usage() {
 Usage: situ [options]
 
 Options:
-  -q, --query '<prompt>'   Run a single query non-interactively and exit.
-  -s, --silent             Suppress status messages (useful when piping output).
-  -c, --config <file>      Use a specific config file (default: situ.conf).
-  -t, --test               Run network connectivity tests and exit.
-  -h, --help               Show this help message and exit.
+  -q, --query '<prompt>'        Run a single query non-interactively and exit.
+  -s, --silent                  Suppress status messages (useful when piping output).
+  -c, --config <file>           Use a specific config file (default: situ.conf).
+  -l, --llama-config <file>     Inject a llama.cpp JSON config file into the server.
+  -t, --test                    Run network connectivity tests and exit.
+  -h, --help                    Show this help message and exit.
 
 Examples:
   situ.sh                                        Start an interactive session.
@@ -28,6 +29,7 @@ QUERY=""
 RUN_TEST=0
 SILENT=0
 CONFIG_FILE=""
+LLAMA_CONFIG_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -52,6 +54,16 @@ while [[ $# -gt 0 ]]; do
                 shift
             else
                 echo "Error: --query requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        -l|--llama-config)
+            shift
+            if [[ $# -gt 0 ]]; then
+                LLAMA_CONFIG_FILE="$1"
+                shift
+            else
+                echo "Error: --llama-config requires an argument" >&2
                 exit 1
             fi
             ;;
@@ -130,10 +142,22 @@ if [ -z "${LM_HOST:-}" ]; then
         echo "Error: model file not found: ${LMSTUDIO_MODELS}/${MODEL}" >&2
         exit 1
     fi
+    LLAMA_EXTRA_ARGS=()
+    LLAMA_EXTRA_VOLUMES=()
+    if [ -n "${LLAMA_CONFIG_FILE}" ]; then
+        if [ ! -f "${LLAMA_CONFIG_FILE}" ]; then
+            echo "Error: llama config file not found: ${LLAMA_CONFIG_FILE}" >&2
+            exit 1
+        fi
+        LLAMA_EXTRA_VOLUMES=(--volume "$(realpath "${LLAMA_CONFIG_FILE}"):/llama.cfg:ro")
+        LLAMA_EXTRA_ARGS=(--config /llama.cfg)
+    fi
     podman run --pod "${POD_NAME}" -d \
         --name "${POD_NAME}-llama" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
+        "${LLAMA_EXTRA_VOLUMES[@]}" \
         "${LLAMA_IMAGE}" \
+        "${LLAMA_EXTRA_ARGS[@]}" \
         --model "/models/${MODEL}" \
         --port "${LM_PORT}" \
         --host 0.0.0.0 \
@@ -200,6 +224,7 @@ echo ""
 '
     podman run --rm -it \
         --pod "${POD_NAME}" \
+        --name "${POD_NAME}" \
         "${SITU_ENV[@]}" \
         situ:latest \
         bash -c "$TESTSCRIPT"
@@ -209,6 +234,7 @@ fi
 if [[ -n "$QUERY" ]]; then
     podman run --rm \
         --pod "${POD_NAME}" \
+        --name "${POD_NAME}" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
@@ -216,6 +242,7 @@ if [[ -n "$QUERY" ]]; then
 else
     podman run --rm -it \
         --pod "${POD_NAME}" \
+        --name "${POD_NAME}" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \

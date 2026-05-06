@@ -51,9 +51,10 @@ alias situ=~/.situ/scripts/situ.sh
 Usage: situ [options]
 
 Options:
-  -q, --query '<prompt>'   Run a single query non-interactively and exit.
-  -s, --silent             Suppress status messages (useful when piping output).
-  -t, --test               Run network connectivity tests and exit.
-  -c, --config <file>      Use a specific config file (default: situ.conf).
-  -h, --help               Show this help message and exit.
+  -q, --query '<prompt>'        Run a single query non-interactively and exit.
+  -s, --silent                  Suppress status messages (useful when piping output).
+  -t, --test                    Run network connectivity tests and exit.
+  -c, --config <file>           Use a specific config file (default: situ.conf).
+  -l, --llama-config <file>     Inject a llama.cpp JSON config, however situ.conf take precedence
+  -h, --help                    Show this help message and exit.
 ```
