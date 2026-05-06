@@ -1,0 +1,5 @@
+{
+  "defaultProvider": "lm-server",
+  "defaultModel": "${MODEL}",
+  "defaultThinkingLevel": "medium"
+}

@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "lm-server": {
+      "baseUrl": "http://host.docker.internal:1234/v1",
+      "apiKey": "lm-studio",
+      "models": [
+        {
+          "id": "${MODEL}",
+          "name": "Local LM",
+          "api": "openai-completions",
+          "contextWindow": 64000,
+          "maxTokens": 4096,
+          "reasoning": true,
+          "input": ["text"]
+        }
+      ]
+    }
+  }
+}
