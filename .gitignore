@@ -2,6 +2,7 @@
 *.code-workspace
 
 NOTES.md
+CLAUDE.md
 
 *.conf
 !situ.conf

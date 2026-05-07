@@ -104,6 +104,10 @@ if [ -n "${LM_HOST:-}" ] && [ "${MODE}" = "RESTRICTED" ]; then
     exit 1
 fi
 
+if [ -n "${LLAMA_CONFIG_FILE}" ] && [ -n "${LM_HOST:-}" ]; then
+    echo "Warning: --llama-config is ignored when connecting to an external LM server (LM_HOST is set)." >&2
+fi
+
 if [ "${SILENT}" = "0" ]; then
     echo "SITU v${VERSION}"
     echo ""
