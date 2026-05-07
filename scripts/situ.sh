@@ -13,6 +13,7 @@ Options:
   -s, --silent                  Suppress status messages (useful when piping output).
   -c, --config <file>           Use a specific config file (default: situ.conf).
   -l, --llama-config <file>     Inject a llama.cpp JSON config file into the server.
+  -L, --log <directory>         Write logs to <directory>/llama_<ts>.log and <directory>/situ_<ts>.log.
   -t, --test                    Run network connectivity tests and exit.
   -h, --help                    Show this help message and exit.
 
@@ -30,6 +31,7 @@ RUN_TEST=0
 SILENT=0
 CONFIG_FILE=""
 LLAMA_CONFIG_FILE=""
+LOG_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -64,6 +66,16 @@ while [[ $# -gt 0 ]]; do
                 shift
             else
                 echo "Error: --llama-config requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        -L|--log)
+            shift
+            if [[ $# -gt 0 ]]; then
+                LOG_DIR="$1"
+                shift
+            else
+                echo "Error: --log requires an argument" >&2
                 exit 1
             fi
             ;;
@@ -108,6 +120,15 @@ if [ -n "${LLAMA_CONFIG_FILE}" ] && [ -n "${LM_HOST:-}" ]; then
     echo "Warning: --llama-config is ignored when connecting to an external LM server (LM_HOST is set)." >&2
 fi
 
+if [ -n "${LOG_DIR}" ]; then
+    if ! mkdir -p "${LOG_DIR}" 2>/dev/null; then
+        echo "Error: cannot create log directory: ${LOG_DIR}" >&2
+        exit 1
+    fi
+    LOG_DIR="$(cd "${LOG_DIR}" && pwd)"
+    LOG_TS="$(date +%Y%m%d_%H%M%S)"
+fi
+
 if [ "${SILENT}" = "0" ]; then
     echo "SITU v${VERSION}"
     echo ""
@@ -121,13 +142,54 @@ if [ "${SILENT}" = "0" ]; then
     echo "Ctx size  : ${CTX_SIZE}"
     echo "Mountpoint: ${MOUNTPOINT}"
     echo "Mode      : ${MODE}"
+    [ -n "${LOG_DIR}" ] && echo "Logs      : ${LOG_DIR}"
     echo ""
 fi
 
 POD_NAME="situ-$$"
+LOG_PIDS=()
 
-cleanup() { podman pod rm -f "${POD_NAME}" > /dev/null 2>&1 || true; }
+cleanup() {
+    for pid in "${LOG_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+    podman pod rm -f "${POD_NAME}" > /dev/null 2>&1 || true
+}
 trap cleanup EXIT INT TERM
+
+start_situ_logger() {
+    [ -z "${LOG_DIR}" ] && return
+    (
+        while ! podman container exists "${POD_NAME}" 2>/dev/null; do sleep 0.2; done
+        podman logs -f "${POD_NAME}" > "${LOG_DIR}/situ_${LOG_TS}.log" 2>&1
+    ) &
+    LOG_PIDS+=($!)
+}
+
+watch_llama() {
+    (
+        while ! podman container exists "${POD_NAME}-llama" 2>/dev/null; do
+            sleep 0.2
+        done
+        while :; do
+            STATE=$(podman inspect --format '{{.State.Status}}' "${POD_NAME}-llama" 2>/dev/null) || return
+            if [ "$STATE" != "running" ] && [ "$STATE" != "created" ]; then
+                CODE=$(podman inspect --format '{{.State.ExitCode}}' "${POD_NAME}-llama" 2>/dev/null)
+                {
+                    echo ""
+                    echo "Error: llama.cpp sidecar exited (status=${STATE}, exit=${CODE})."
+                    echo "--- llama.cpp last 30 log lines ---"
+                    podman logs --tail 30 "${POD_NAME}-llama" 2>&1
+                    echo "------------------------------------"
+                } | awk '{printf "%s\r\n", $0}' >&2
+                podman stop -t 0 "${POD_NAME}" >/dev/null 2>&1 || true
+                return
+            fi
+            sleep 1
+        done
+    ) &
+    LOG_PIDS+=($!)
+}
 
 if [ "${MODE}" = "RESTRICTED" ]; then
     podman pod create --name "${POD_NAME}" --network=none > /dev/null
@@ -166,6 +228,11 @@ if [ -z "${LM_HOST:-}" ]; then
         --port "${LM_PORT}" \
         --host 0.0.0.0 \
         --ctx-size "${CTX_SIZE}" > /dev/null
+    if [ -n "${LOG_DIR}" ]; then
+        podman logs -f "${POD_NAME}-llama" > "${LOG_DIR}/llama_${LOG_TS}.log" 2>&1 &
+        LOG_PIDS+=($!)
+    fi
+    watch_llama
 else
     LM_SERVER_BASE_URL="http://${LM_HOST}:${LM_PORT}/v1"
 fi
@@ -226,6 +293,7 @@ check "External TCP is blocked    8.8.8.8:53"           0 bash -c "true < /dev/t
 
 echo ""
 '
+    start_situ_logger
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${POD_NAME}" \
@@ -236,6 +304,7 @@ echo ""
 fi
 
 if [[ -n "$QUERY" ]]; then
+    start_situ_logger
     podman run --rm \
         --pod "${POD_NAME}" \
         --name "${POD_NAME}" \
@@ -244,6 +313,7 @@ if [[ -n "$QUERY" ]]; then
         situ:latest \
         pi "$QUERY"
 else
+    start_situ_logger
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${POD_NAME}" \
