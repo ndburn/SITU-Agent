@@ -210,6 +210,12 @@ if [ -z "${LM_HOST:-}" ]; then
     fi
     LLAMA_EXTRA_ARGS=()
     LLAMA_EXTRA_VOLUMES=()
+    LLAMA_GPU_ARGS=()
+    LLAMA_GPU_LAYERS=()
+    if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
+        LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
+        LLAMA_GPU_LAYERS=(--n-gpu-layers 999)
+    fi
     if [ -n "${LLAMA_CONFIG_FILE}" ]; then
         if [ ! -f "${LLAMA_CONFIG_FILE}" ]; then
             echo "Error: llama config file not found: ${LLAMA_CONFIG_FILE}" >&2
@@ -220,6 +226,7 @@ if [ -z "${LM_HOST:-}" ]; then
     fi
     podman run --pod "${POD_NAME}" -d \
         --name "${POD_NAME}-llama" \
+        "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
         "${LLAMA_EXTRA_VOLUMES[@]}" \
         "${LLAMA_IMAGE}" \
@@ -227,7 +234,8 @@ if [ -z "${LM_HOST:-}" ]; then
         --model "/models/${MODEL}" \
         --port "${LM_PORT}" \
         --host 0.0.0.0 \
-        --ctx-size "${CTX_SIZE}" > /dev/null
+        --ctx-size "${CTX_SIZE}" \
+        "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
         podman logs -f "${POD_NAME}-llama" > "${LOG_DIR}/llama_${LOG_TS}.log" 2>&1 &
         LOG_PIDS+=($!)
