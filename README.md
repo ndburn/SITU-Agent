@@ -1,85 +1,57 @@
-# SITU Coding Agent
+<div align="center">
 
-**Intelligence stays in situ. Your IP stays yours.**
+# SITU Agent
 
+### Nothing Leaves the Room.
 
-## Installation and Hello-World
+**An open-source AI agent that runs entirely on your hardware, in an isolated environment, with no network access. Containers ensures complete privacy of your code and data.**
 
-**0. Prerequisite: Podman 4 or later**
+[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg?style=for-the-badge)](LICENSE)
+[![Runs Locally](https://img.shields.io/badge/Runs-100%25%20Local-blue?style=for-the-badge)](#)
+[![Air-Gapped](https://img.shields.io/badge/Network-None-red?style=for-the-badge)](#)
+[![Podman](https://img.shields.io/badge/Powered%20by-Podman-892CA0?style=for-the-badge&logo=podman&logoColor=white)](https://podman.io)
 
-Check version or install from https://podman.io/docs/installation
+[**Website**](https://situagent.com) &nbsp;·&nbsp; [**Knowledge Base**](https://situagent.com/kb/knowledgebase.html) &nbsp;·&nbsp; [**Install Guide**](https://situagent.com/kb/firststeps.html)
 
-```bash
-podman --version
-```
+</div>
 
-**1. Clone the project**
+---
 
-```bash
-mkdir ~/.situ/ && cd $_
-git clone TODO
-```
+## Why SITU?
 
-**2. Build the SITU container**
+Most AI coding tools ship your source code to a cloud endpoint. They *promise* not to train on it. They *promise* not to leak it. They *promise* their employees can't read it.
 
-```bash
-~/.situ/scripts/build.sh
-```
+**SITU doesn't ask you to trust a promise.**
 
-**3. Download a model** (e.g. Gemma4-E4B Q4)
+The agent runs inside an isolated container with `--network=none`. There is no socket. No DNS. No route to the outside world. The kernel itself enforces the boundary — not a privacy policy, not a checkbox, not a vendor's word.
 
-```bash
-mkdir -p ~/.situ/models && curl -L --output-dir ~/.situ/models -O "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf"
-```
+If the network doesn't exist, your code can't leave through it.
 
-**4. Run a test**
-```bash
-~/.situ/scripts/situ.sh -q "Who was Albert Einstein?"
-```
+---
 
+## What You Get
 
-**5. Create an alias** (on Mac `~/.zshrc`, Ubuntu '~/.bashrc', etc.)
+| | |
+|---|---|
+| **100% Local** | Runs on your own hardware with your own models. Zero cloud dependency. |
+| **Kernel-Enforced Isolation** | The agent pod has no network namespace. Isolated by construction. |
+| **Open Source** | Every container definition and shell script — MIT licensed, fully auditable. |
+| **Model-Agnostic** | Drop in any OpenAI-compatible model: Gemma, Llama, Mistral, Qwen |
+| **Two Modes** | `RESTRICTED` for full isolation (default setting), or `NETWORK` to point at an external LM server. |
+| **Audit** | Run `--test` to confirm the hardening and isolation: checks the LM server is reachable and that external HTTP, HTTPS, DNS, and raw TCP are all blocked. |
 
-```bash
-alias situ=~/.situ/scripts/situ.sh
-```
+---
 
+## Who It's For
 
-## Usage
+Developers whose code **cannot** be sent to the cloud:
 
-```
-Usage: situ [options]
+- Finance, defense, legal, biotech, healthcare, government
+- IP-sensitive teams under NDA, export control, or regulatory constraints
+- Anyone who wants their work to stay on their machine — full stop
 
-Options:
-  -q, --query '<prompt>'        Run a single query non-interactively and exit.
-  -s, --silent                  Suppress status messages (useful when piping output).
-  -t, --test                    Run network connectivity tests and exit.
-  -c, --config <file>           Use a specific config file (default: situ.conf).
-  -l, --llama-config <file>     Inject a llama.cpp JSON config, however situ.conf take precedence
-  -h, --help                    Show this help message and exit.
-```
+---
 
+Get more information at [https://www.situagent.com](https://situagent.com)
 
-## Dependencies
-
-| Tool | Author | URL | License |
-|------|--------|-----|---------|
-| pi-mono (coding agent) | Mario Zechner | https://github.com/badlogic/pi-mono | MIT |
-| llama.cpp | Georgi Gerganov | https://github.com/ggml-org/llama.cpp | MIT |
-| Podman | Red Hat / containers community | https://podman.io | Apache 2.0 |
-| Node.js | OpenJS Foundation | https://nodejs.org | MIT |
-| fd | David Peter | https://github.com/sharkdp/fd | MIT |
-| ripgrep | Andrew Gallant | https://github.com/BurntSushi/ripgrep | MIT |
-
-
-## Tuning
-
-### Memory Limit
-
-To allow the llama container to use more than the default VM memory (e.g. for large models):
-
-```bash
-podman machine stop
-podman machine set --memory 16384   # MB, so this = 16 GB
-podman machine start
-```
+</div>
