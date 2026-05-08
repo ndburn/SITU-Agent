@@ -9,19 +9,27 @@ usage() {
 Usage: situ [options]
 
 Options:
+  -c, --config <file>           Use a specific config file (default: situ.conf).
+      --ctx-size <tokens>       Override CTX_SIZE (context window in tokens).
+  -h, --help                    Show this help message.
+      --llama-config <file>     Inject a llama.cpp JSON config file into the server.
+      --llama-image <image>     Override LLAMA_IMAGE (llama.cpp container image).
+  -l, --log <directory>         Write logs to <directory>/llama_<ts>.log and <directory>/situ_<ts>.log.
+      --mode <RESTRICTED|NETWORK>  Override MODE from the config file.
+      --model <gguf>            Override MODEL (GGUF filename in LMSTUDIO_MODELS).
+      --mountpoint <dir>        Override MOUNTPOINT (directory mounted as /workspace).
   -q, --query '<prompt>'        Run a single query non-interactively and exit.
   -s, --silent                  Suppress status messages (useful when piping output).
-  -c, --config <file>           Use a specific config file (default: situ.conf).
-  -l, --llama-config <file>     Inject a llama.cpp JSON config file into the server.
-  -L, --log <directory>         Write logs to <directory>/llama_<ts>.log and <directory>/situ_<ts>.log.
-  -t, --test                    Run network connectivity tests and exit.
-  -h, --help                    Show this help message and exit.
+  -T, --temperature <value>     Sampling temperature for the llama.cpp sidecar (default: 0.1, local sidecar only).
+  -t, --test                    Verify configuration and network isolation.
 
 Examples:
   situ.sh                                        Start an interactive session.
   situ.sh -c situ2.conf                          Use situ2.conf as the config.
   situ.sh -q 'Who was Albert Einstein?'          Run a single query and exit.
   situ.sh -s -q 'Who was Albert Einstein?'       Run query and suppress status messages.
+  situ.sh --model gemma-4-E4B-it-Q4_K_M.gguf --ctx-size 32000
+                                                 Override config values for one run.
   situ.sh --test                                 Verify configuration and network isolation.
 EOF
 }
@@ -32,6 +40,12 @@ SILENT=0
 CONFIG_FILE=""
 LLAMA_CONFIG_FILE=""
 LOG_DIR=""
+_CLI_TEMPERATURE=""
+_CLI_MODE=""
+_CLI_MOUNTPOINT=""
+_CLI_LLAMA_IMAGE=""
+_CLI_MODEL=""
+_CLI_CTX_SIZE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -59,7 +73,7 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
-        -l|--llama-config)
+        --llama-config)
             shift
             if [[ $# -gt 0 ]]; then
                 LLAMA_CONFIG_FILE="$1"
@@ -69,13 +83,77 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
-        -L|--log)
+        -l|--log)
             shift
             if [[ $# -gt 0 ]]; then
                 LOG_DIR="$1"
                 shift
             else
                 echo "Error: --log requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        -T|--temperature)
+            shift
+            if [[ $# -gt 0 ]]; then
+                _CLI_TEMPERATURE="$1"
+                shift
+            else
+                echo "Error: --temperature requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        --mode)
+            shift
+            if [[ $# -gt 0 ]]; then
+                if [ "$1" != "RESTRICTED" ] && [ "$1" != "NETWORK" ]; then
+                    echo "Error: --mode must be RESTRICTED or NETWORK (got: $1)" >&2
+                    exit 1
+                fi
+                _CLI_MODE="$1"
+                shift
+            else
+                echo "Error: --mode requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        --mountpoint)
+            shift
+            if [[ $# -gt 0 ]]; then
+                _CLI_MOUNTPOINT="$1"
+                shift
+            else
+                echo "Error: --mountpoint requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        --llama-image)
+            shift
+            if [[ $# -gt 0 ]]; then
+                _CLI_LLAMA_IMAGE="$1"
+                shift
+            else
+                echo "Error: --llama-image requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        --model)
+            shift
+            if [[ $# -gt 0 ]]; then
+                _CLI_MODEL="$1"
+                shift
+            else
+                echo "Error: --model requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        --ctx-size)
+            shift
+            if [[ $# -gt 0 ]]; then
+                _CLI_CTX_SIZE="$1"
+                shift
+            else
+                echo "Error: --ctx-size requires an argument" >&2
                 exit 1
             fi
             ;;
@@ -102,14 +180,15 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 source "$CONFIG_FILE"
 
-MOUNTPOINT="${MOUNTPOINT:-$(pwd)}"
-MODE="${MODE:-RESTRICTED}"
+MOUNTPOINT="${_CLI_MOUNTPOINT:-${MOUNTPOINT:-$(pwd)}}"
+MODE="${_CLI_MODE:-${MODE:-RESTRICTED}}"
 LM_PORT="${LM_PORT:-8080}"
-LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}"
+LLAMA_IMAGE="${_CLI_LLAMA_IMAGE:-${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}}"
 LMSTUDIO_MODELS="${LMSTUDIO_MODELS:-$HOME/.situ/models}"
-CTX_SIZE="${CTX_SIZE:-64000}"
+CTX_SIZE="${_CLI_CTX_SIZE:-${CTX_SIZE:-64000}}"
+TEMPERATURE="${_CLI_TEMPERATURE:-${TEMPERATURE:-0.1}}"
 LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
-MODEL="${MODEL:-}"
+MODEL="${_CLI_MODEL:-${MODEL:-}}"
 
 if [ -n "${LM_HOST:-}" ] && [ "${MODE}" = "RESTRICTED" ]; then
     echo "Error: LM_HOST is set but MODE=RESTRICTED. Set MODE=NETWORK in situ.conf to allow external access." >&2
@@ -235,6 +314,7 @@ if [ -z "${LM_HOST:-}" ]; then
         --port "${LM_PORT}" \
         --host 0.0.0.0 \
         --ctx-size "${CTX_SIZE}" \
+        --temp "${TEMPERATURE}" \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
         podman logs -f "${POD_NAME}-llama" > "${LOG_DIR}/llama_${LOG_TS}.log" 2>&1 &
