@@ -6,3 +6,5 @@ CLAUDE.md
 
 *.conf
 !situ.conf
+
+tests/tmp/

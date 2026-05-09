@@ -3,6 +3,8 @@
 VERSION="0.4.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
 
 usage() {
     cat >&2 <<EOF
@@ -34,181 +36,90 @@ Examples:
 EOF
 }
 
-QUERY=""
-RUN_TEST=0
-SILENT=0
-CONFIG_FILE=""
-LLAMA_CONFIG_FILE=""
-LOG_DIR=""
-_CLI_TEMPERATURE=""
-_CLI_MODE=""
-_CLI_MOUNTPOINT=""
-_CLI_LLAMA_IMAGE=""
-_CLI_MODEL=""
-_CLI_CTX_SIZE=""
+parse_cli_args() {
+    QUERY=""
+    RUN_TEST=0
+    SILENT=0
+    CONFIG_FILE_ARG=""
+    LLAMA_CONFIG_FILE=""
+    LOG_DIR=""
+    _CLI_TEMPERATURE=""
+    _CLI_MODE=""
+    _CLI_MOUNTPOINT=""
+    _CLI_LLAMA_IMAGE=""
+    _CLI_MODEL=""
+    _CLI_CTX_SIZE=""
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -c|--config)
-            shift
-            if [[ $# -gt 0 ]]; then
-                CONFIG_FILE="$1"
-                shift
-            else
-                echo "Error: --config requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -s|--silent)
-            SILENT=1
-            shift
-            ;;
-        -q|--query)
-            shift
-            if [[ $# -gt 0 ]]; then
-                QUERY="$1"
-                shift
-            else
-                echo "Error: --query requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        --llama-config)
-            shift
-            if [[ $# -gt 0 ]]; then
-                LLAMA_CONFIG_FILE="$1"
-                shift
-            else
-                echo "Error: --llama-config requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -l|--log)
-            shift
-            if [[ $# -gt 0 ]]; then
-                LOG_DIR="$1"
-                shift
-            else
-                echo "Error: --log requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -T|--temperature)
-            shift
-            if [[ $# -gt 0 ]]; then
-                _CLI_TEMPERATURE="$1"
-                shift
-            else
-                echo "Error: --temperature requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        --mode)
-            shift
-            if [[ $# -gt 0 ]]; then
-                if [ "$1" != "RESTRICTED" ] && [ "$1" != "NETWORK" ]; then
-                    echo "Error: --mode must be RESTRICTED or NETWORK (got: $1)" >&2
-                    exit 1
-                fi
-                _CLI_MODE="$1"
-                shift
-            else
-                echo "Error: --mode requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        --mountpoint)
-            shift
-            if [[ $# -gt 0 ]]; then
-                _CLI_MOUNTPOINT="$1"
-                shift
-            else
-                echo "Error: --mountpoint requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        --llama-image)
-            shift
-            if [[ $# -gt 0 ]]; then
-                _CLI_LLAMA_IMAGE="$1"
-                shift
-            else
-                echo "Error: --llama-image requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        --model)
-            shift
-            if [[ $# -gt 0 ]]; then
-                _CLI_MODEL="$1"
-                shift
-            else
-                echo "Error: --model requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        --ctx-size)
-            shift
-            if [[ $# -gt 0 ]]; then
-                _CLI_CTX_SIZE="$1"
-                shift
-            else
-                echo "Error: --ctx-size requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -t|--test)
-            RUN_TEST=1
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            usage
-            exit 1
-            ;;
-    esac
-done
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -c|--config)
+                [ $# -ge 2 ] || die "--config requires an argument"
+                CONFIG_FILE_ARG="$2"; shift 2 ;;
+            -s|--silent)
+                SILENT=1; shift ;;
+            -q|--query)
+                [ $# -ge 2 ] || die "--query requires an argument"
+                QUERY="$2"; shift 2 ;;
+            --llama-config)
+                [ $# -ge 2 ] || die "--llama-config requires an argument"
+                LLAMA_CONFIG_FILE="$2"; shift 2 ;;
+            -l|--log)
+                [ $# -ge 2 ] || die "--log requires an argument"
+                LOG_DIR="$2"; shift 2 ;;
+            -T|--temperature)
+                [ $# -ge 2 ] || die "--temperature requires an argument"
+                _CLI_TEMPERATURE="$2"; shift 2 ;;
+            --mode)
+                [ $# -ge 2 ] || die "--mode requires an argument"
+                [[ "$2" == "RESTRICTED" || "$2" == "NETWORK" ]] \
+                    || die "--mode must be RESTRICTED or NETWORK (got: $2)"
+                _CLI_MODE="$2"; shift 2 ;;
+            --mountpoint)
+                [ $# -ge 2 ] || die "--mountpoint requires an argument"
+                _CLI_MOUNTPOINT="$2"; shift 2 ;;
+            --llama-image)
+                [ $# -ge 2 ] || die "--llama-image requires an argument"
+                _CLI_LLAMA_IMAGE="$2"; shift 2 ;;
+            --model)
+                [ $# -ge 2 ] || die "--model requires an argument"
+                _CLI_MODEL="$2"; shift 2 ;;
+            --ctx-size)
+                [ $# -ge 2 ] || die "--ctx-size requires an argument"
+                _CLI_CTX_SIZE="$2"; shift 2 ;;
+            -t|--test)
+                RUN_TEST=1; shift ;;
+            -h|--help)
+                usage; exit 0 ;;
+            *)
+                echo "Unknown option: $1" >&2
+                usage
+                exit 1 ;;
+        esac
+    done
+}
 
-CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/../situ.conf}"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: config file not found: $CONFIG_FILE" >&2
-    exit 1
-fi
-source "$CONFIG_FILE"
+# Layers CLI overrides on top of config-loaded values, then fills situ-specific defaults.
+apply_situ_overrides() {
+    MOUNTPOINT="${_CLI_MOUNTPOINT:-${MOUNTPOINT:-$(pwd)}}"
+    MODE="${_CLI_MODE:-${MODE:-RESTRICTED}}"
+    LLAMA_IMAGE="${_CLI_LLAMA_IMAGE:-${LLAMA_IMAGE}}"
+    CTX_SIZE="${_CLI_CTX_SIZE:-${CTX_SIZE}}"
+    TEMPERATURE="${_CLI_TEMPERATURE:-${TEMPERATURE}}"
+    MODEL="${_CLI_MODEL:-${MODEL}}"
+    LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
+}
 
-MOUNTPOINT="${_CLI_MOUNTPOINT:-${MOUNTPOINT:-$(pwd)}}"
-MODE="${_CLI_MODE:-${MODE:-RESTRICTED}}"
-LM_PORT="${LM_PORT:-8080}"
-LLAMA_IMAGE="${_CLI_LLAMA_IMAGE:-${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}}"
-LMSTUDIO_MODELS="${LMSTUDIO_MODELS:-$HOME/.situ/models}"
-CTX_SIZE="${_CLI_CTX_SIZE:-${CTX_SIZE:-64000}}"
-TEMPERATURE="${_CLI_TEMPERATURE:-${TEMPERATURE:-0.1}}"
-LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
-MODEL="${_CLI_MODEL:-${MODEL:-}}"
-
-if [ -n "${LM_HOST:-}" ] && [ "${MODE}" = "RESTRICTED" ]; then
-    echo "Error: LM_HOST is set but MODE=RESTRICTED. Set MODE=NETWORK in situ.conf to allow external access." >&2
-    exit 1
-fi
-
-if [ -n "${LLAMA_CONFIG_FILE}" ] && [ -n "${LM_HOST:-}" ]; then
-    echo "Warning: --llama-config is ignored when connecting to an external LM server (LM_HOST is set)." >&2
-fi
-
-if [ -n "${LOG_DIR}" ]; then
-    if ! mkdir -p "${LOG_DIR}" 2>/dev/null; then
-        echo "Error: cannot create log directory: ${LOG_DIR}" >&2
-        exit 1
+validate_situ_config() {
+    if [ -n "${LM_HOST:-}" ] && [ "${MODE}" = "RESTRICTED" ]; then
+        die "LM_HOST is set but MODE=RESTRICTED. Set MODE=NETWORK in situ.conf to allow external access."
     fi
-    LOG_DIR="$(cd "${LOG_DIR}" && pwd)"
-    LOG_TS="$(date +%Y%m%d_%H%M%S)"
-fi
+    if [ -n "${LLAMA_CONFIG_FILE}" ] && [ -n "${LM_HOST:-}" ]; then
+        echo "Warning: --llama-config is ignored when connecting to an external LM server (LM_HOST is set)." >&2
+    fi
+}
 
-if [ "${SILENT}" = "0" ]; then
+print_banner() {
+    [ "${SILENT}" = "1" ] && return 0
     echo "SITU v${VERSION}"
     echo ""
     echo "Config    : ${CONFIG_FILE}"
@@ -223,21 +134,15 @@ if [ "${SILENT}" = "0" ]; then
     echo "Mode      : ${MODE}"
     [ -n "${LOG_DIR}" ] && echo "Logs      : ${LOG_DIR}"
     echo ""
-fi
-
-POD_NAME="situ-$$"
-LOG_PIDS=()
+}
 
 cleanup() {
-    for pid in "${LOG_PIDS[@]}"; do
-        kill "$pid" 2>/dev/null || true
-    done
+    kill_tracked_pids
     podman pod rm -f "${POD_NAME}" > /dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
 
-start_situ_logger() {
-    [ -z "${LOG_DIR}" ] && return
+start_situ_log_tail() {
+    [ -z "${LOG_DIR}" ] && return 0
     (
         while ! podman container exists "${POD_NAME}" 2>/dev/null; do sleep 0.2; done
         podman logs -f "${POD_NAME}" > "${LOG_DIR}/situ_${LOG_TS}.log" 2>&1
@@ -245,7 +150,7 @@ start_situ_logger() {
     LOG_PIDS+=($!)
 }
 
-watch_llama() {
+watch_llama_sidecar() {
     (
         while ! podman container exists "${POD_NAME}-llama" 2>/dev/null; do
             sleep 0.2
@@ -270,39 +175,17 @@ watch_llama() {
     LOG_PIDS+=($!)
 }
 
-if [ "${MODE}" = "RESTRICTED" ]; then
-    podman pod create --name "${POD_NAME}" --network=none > /dev/null
-else
-    podman pod create --name "${POD_NAME}" > /dev/null
-fi
+create_pod() {
+    if [ "${MODE}" = "RESTRICTED" ]; then
+        podman pod create --name "${POD_NAME}" --network=none > /dev/null
+    else
+        podman pod create --name "${POD_NAME}" > /dev/null
+    fi
+}
 
-if [ -z "${LM_HOST:-}" ]; then
-    LM_SERVER_BASE_URL="http://127.0.0.1:${LM_PORT}/v1"
-    mkdir -p "${LMSTUDIO_MODELS}"
-    if [ -z "${MODEL}" ]; then
-        echo "Error: MODEL is not set in situ.conf." >&2
-        exit 1
-    fi
-    if [ ! -f "${LMSTUDIO_MODELS}/${MODEL}" ]; then
-        echo "Error: model file not found: ${LMSTUDIO_MODELS}/${MODEL}" >&2
-        exit 1
-    fi
-    LLAMA_EXTRA_ARGS=()
-    LLAMA_EXTRA_VOLUMES=()
-    LLAMA_GPU_ARGS=()
-    LLAMA_GPU_LAYERS=()
-    if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
-        LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
-        LLAMA_GPU_LAYERS=(--n-gpu-layers 999)
-    fi
-    if [ -n "${LLAMA_CONFIG_FILE}" ]; then
-        if [ ! -f "${LLAMA_CONFIG_FILE}" ]; then
-            echo "Error: llama config file not found: ${LLAMA_CONFIG_FILE}" >&2
-            exit 1
-        fi
-        LLAMA_EXTRA_VOLUMES=(--volume "$(realpath "${LLAMA_CONFIG_FILE}"):/llama.cfg:ro")
-        LLAMA_EXTRA_ARGS=(--config /llama.cfg)
-    fi
+start_llama_sidecar() {
+    require_model_file
+    build_llama_runtime_args
     podman run --pod "${POD_NAME}" -d \
         --name "${POD_NAME}-llama" \
         "${LLAMA_GPU_ARGS[@]}" \
@@ -317,26 +200,34 @@ if [ -z "${LM_HOST:-}" ]; then
         --temp "${TEMPERATURE}" \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
-        podman logs -f "${POD_NAME}-llama" > "${LOG_DIR}/llama_${LOG_TS}.log" 2>&1 &
-        LOG_PIDS+=($!)
+        tail_container_to_file "${POD_NAME}-llama" "${LOG_DIR}/llama_${LOG_TS}.log"
     fi
-    watch_llama
-else
-    LM_SERVER_BASE_URL="http://${LM_HOST}:${LM_PORT}/v1"
-fi
+    watch_llama_sidecar
+}
 
-SITU_ENV=(
-    -e LM_SERVER_BASE_URL="${LM_SERVER_BASE_URL}"
-    -e MODEL="${MODEL}"
-    -e LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT}"
-    -e MODE="${MODE}"
-    -e CTX_SIZE="${CTX_SIZE}"
-    -e LM_HOST="${LM_HOST:-}"
-    -e SILENT="${SILENT}"
-)
+resolve_lm_server_base_url() {
+    if [ -z "${LM_HOST:-}" ]; then
+        LM_SERVER_BASE_URL="http://127.0.0.1:${LM_PORT}/v1"
+        start_llama_sidecar
+    else
+        LM_SERVER_BASE_URL="http://${LM_HOST}:${LM_PORT}/v1"
+    fi
+}
 
-if [ "${RUN_TEST}" = "1" ]; then
-    TESTSCRIPT='
+build_situ_env() {
+    SITU_ENV=(
+        -e LM_SERVER_BASE_URL="${LM_SERVER_BASE_URL}"
+        -e MODEL="${MODEL}"
+        -e LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT}"
+        -e MODE="${MODE}"
+        -e CTX_SIZE="${CTX_SIZE}"
+        -e LM_HOST="${LM_HOST:-}"
+        -e SILENT="${SILENT}"
+    )
+}
+
+run_test_session() {
+    local TESTSCRIPT='
 GREEN='"'"'\033[0;32m'"'"'; RED='"'"'\033[0;31m'"'"'; CYAN='"'"'\033[0;36m'"'"'; NC='"'"'\033[0m'"'"'
 pass() { printf "${GREEN}[PASSED]${NC} %s\n" "$1"; }
 fail() { printf "${RED}[FAILED]${NC} %s\n" "$1"; }
@@ -381,18 +272,17 @@ check "External TCP is blocked    8.8.8.8:53"           0 bash -c "true < /dev/t
 
 echo ""
 '
-    start_situ_logger
+    start_situ_log_tail
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${POD_NAME}" \
         "${SITU_ENV[@]}" \
         situ:latest \
         bash -c "$TESTSCRIPT"
-    exit $?
-fi
+}
 
-if [[ -n "$QUERY" ]]; then
-    start_situ_logger
+run_query_session() {
+    start_situ_log_tail
     podman run --rm \
         --pod "${POD_NAME}" \
         --name "${POD_NAME}" \
@@ -400,8 +290,10 @@ if [[ -n "$QUERY" ]]; then
         "${SITU_ENV[@]}" \
         situ:latest \
         pi "$QUERY"
-else
-    start_situ_logger
+}
+
+run_interactive_session() {
+    start_situ_log_tail
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${POD_NAME}" \
@@ -409,4 +301,35 @@ else
         "${SITU_ENV[@]}" \
         situ:latest \
         pi
-fi
+}
+
+main() {
+    parse_cli_args "$@"
+    load_config_file "${CONFIG_FILE_ARG}" "${SCRIPT_DIR}"
+    apply_llama_defaults
+    apply_situ_overrides
+    validate_situ_config
+    prepare_log_dir
+    print_banner
+
+    POD_NAME="situ-$$"
+    LOG_PIDS=()
+    trap cleanup EXIT INT TERM
+
+    create_pod
+    resolve_lm_server_base_url
+    build_situ_env
+
+    if [ "${RUN_TEST}" = "1" ]; then
+        run_test_session
+        exit $?
+    fi
+
+    if [ -n "${QUERY}" ]; then
+        run_query_session
+    else
+        run_interactive_session
+    fi
+}
+
+main "$@"

@@ -3,6 +3,8 @@
 VERSION="0.4.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
 
 usage() {
     cat >&2 <<EOF
@@ -27,117 +29,42 @@ Examples:
 EOF
 }
 
-SILENT=0
-CONFIG_FILE=""
-LLAMA_CONFIG_FILE=""
-LOG_DIR=""
-LLAMA_PASSTHROUGH=()
+parse_cli_args() {
+    SILENT=0
+    CONFIG_FILE_ARG=""
+    LLAMA_CONFIG_FILE=""
+    LOG_DIR=""
+    LLAMA_PASSTHROUGH=()
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -c|--config)
-            shift
-            if [[ $# -gt 0 ]]; then
-                CONFIG_FILE="$1"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -c|--config)
+                [ $# -ge 2 ] || die "--config requires an argument"
+                CONFIG_FILE_ARG="$2"; shift 2 ;;
+            -s|--silent)
+                SILENT=1; shift ;;
+            --llama-config)
+                [ $# -ge 2 ] || die "--llama-config requires an argument"
+                LLAMA_CONFIG_FILE="$2"; shift 2 ;;
+            -l|--log)
+                [ $# -ge 2 ] || die "--log requires an argument"
+                LOG_DIR="$2"; shift 2 ;;
+            -h|--help)
+                usage; exit 0 ;;
+            --)
                 shift
-            else
-                echo "Error: --config requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -s|--silent)
-            SILENT=1
-            shift
-            ;;
-        --llama-config)
-            shift
-            if [[ $# -gt 0 ]]; then
-                LLAMA_CONFIG_FILE="$1"
-                shift
-            else
-                echo "Error: --llama-config requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -l|--log)
-            shift
-            if [[ $# -gt 0 ]]; then
-                LOG_DIR="$1"
-                shift
-            else
-                echo "Error: --log requires an argument" >&2
-                exit 1
-            fi
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        --)
-            shift
-            LLAMA_PASSTHROUGH=("$@")
-            break
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            usage
-            exit 1
-            ;;
-    esac
-done
+                LLAMA_PASSTHROUGH=("$@")
+                break ;;
+            *)
+                echo "Unknown option: $1" >&2
+                usage
+                exit 1 ;;
+        esac
+    done
+}
 
-CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/../situ.conf}"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: config file not found: $CONFIG_FILE" >&2
-    exit 1
-fi
-source "$CONFIG_FILE"
-
-LM_PORT="${LM_PORT:-8080}"
-LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}"
-LMSTUDIO_MODELS="${LMSTUDIO_MODELS:-$HOME/.situ/models}"
-CTX_SIZE="${CTX_SIZE:-64000}"
-TEMPERATURE="${TEMPERATURE:-0.1}"
-MODEL="${MODEL:-}"
-
-if [ -z "${MODEL}" ]; then
-    echo "Error: MODEL is not set in ${CONFIG_FILE}." >&2
-    exit 1
-fi
-
-mkdir -p "${LMSTUDIO_MODELS}"
-if [ ! -f "${LMSTUDIO_MODELS}/${MODEL}" ]; then
-    echo "Error: model file not found: ${LMSTUDIO_MODELS}/${MODEL}" >&2
-    exit 1
-fi
-
-if [ -n "${LOG_DIR}" ]; then
-    if ! mkdir -p "${LOG_DIR}" 2>/dev/null; then
-        echo "Error: cannot create log directory: ${LOG_DIR}" >&2
-        exit 1
-    fi
-    LOG_DIR="$(cd "${LOG_DIR}" && pwd)"
-    LOG_TS="$(date +%Y%m%d_%H%M%S)"
-fi
-
-LLAMA_EXTRA_ARGS=()
-LLAMA_EXTRA_VOLUMES=()
-LLAMA_GPU_ARGS=()
-LLAMA_GPU_LAYERS=()
-if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
-    LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
-    LLAMA_GPU_LAYERS=(--n-gpu-layers 999)
-fi
-if [ -n "${LLAMA_CONFIG_FILE}" ]; then
-    if [ ! -f "${LLAMA_CONFIG_FILE}" ]; then
-        echo "Error: llama config file not found: ${LLAMA_CONFIG_FILE}" >&2
-        exit 1
-    fi
-    LLAMA_EXTRA_VOLUMES=(--volume "$(realpath "${LLAMA_CONFIG_FILE}"):/llama.cfg:ro")
-    LLAMA_EXTRA_ARGS=(--config /llama.cfg)
-fi
-
-if [ "${SILENT}" = "0" ]; then
+print_banner() {
+    [ "${SILENT}" = "1" ] && return 0
     echo "llama.sh v${VERSION}"
     echo ""
     echo "Config    : ${CONFIG_FILE}"
@@ -147,42 +74,57 @@ if [ "${SILENT}" = "0" ]; then
     echo "Port      : ${LM_PORT} (published on 0.0.0.0)"
     [ -n "${LOG_DIR}" ] && echo "Logs      : ${LOG_DIR}"
     echo ""
-fi
-
-CONTAINER_NAME="llama-$$"
-LOG_PIDS=()
+}
 
 cleanup() {
-    for pid in "${LOG_PIDS[@]}"; do
-        kill "$pid" 2>/dev/null || true
-    done
+    kill_tracked_pids
     podman rm -f "${CONTAINER_NAME}" > /dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
 
-podman run -d \
-    --name "${CONTAINER_NAME}" \
-    --publish "0.0.0.0:${LM_PORT}:${LM_PORT}" \
-    "${LLAMA_GPU_ARGS[@]}" \
-    --volume "${LMSTUDIO_MODELS}:/models:ro" \
-    "${LLAMA_EXTRA_VOLUMES[@]}" \
-    "${LLAMA_IMAGE}" \
-    "${LLAMA_EXTRA_ARGS[@]}" \
-    --model "/models/${MODEL}" \
-    --port "${LM_PORT}" \
-    --host 0.0.0.0 \
-    --ctx-size "${CTX_SIZE}" \
-    --temp "${TEMPERATURE}" \
-    "${LLAMA_GPU_LAYERS[@]}" \
-    "${LLAMA_PASSTHROUGH[@]}" > /dev/null
+start_llama_container() {
+    podman run -d \
+        --name "${CONTAINER_NAME}" \
+        --publish "0.0.0.0:${LM_PORT}:${LM_PORT}" \
+        "${LLAMA_GPU_ARGS[@]}" \
+        --volume "${LMSTUDIO_MODELS}:/models:ro" \
+        "${LLAMA_EXTRA_VOLUMES[@]}" \
+        "${LLAMA_IMAGE}" \
+        "${LLAMA_EXTRA_ARGS[@]}" \
+        --model "/models/${MODEL}" \
+        --port "${LM_PORT}" \
+        --host 0.0.0.0 \
+        --ctx-size "${CTX_SIZE}" \
+        --temp "${TEMPERATURE}" \
+        "${LLAMA_GPU_LAYERS[@]}" \
+        "${LLAMA_PASSTHROUGH[@]}" > /dev/null
+    if [ -n "${LOG_DIR}" ]; then
+        tail_container_to_file "${CONTAINER_NAME}" "${LOG_DIR}/llama_${LOG_TS}.log"
+    fi
+}
 
-if [ -n "${LOG_DIR}" ]; then
-    podman logs -f "${CONTAINER_NAME}" > "${LOG_DIR}/llama_${LOG_TS}.log" 2>&1 &
-    LOG_PIDS+=($!)
-fi
+follow_or_wait() {
+    if [ "${SILENT}" = "1" ]; then
+        podman wait "${CONTAINER_NAME}" > /dev/null
+    else
+        podman logs -f "${CONTAINER_NAME}"
+    fi
+}
 
-if [ "${SILENT}" = "1" ]; then
-    podman wait "${CONTAINER_NAME}" > /dev/null
-else
-    podman logs -f "${CONTAINER_NAME}"
-fi
+main() {
+    parse_cli_args "$@"
+    load_config_file "${CONFIG_FILE_ARG}" "${SCRIPT_DIR}"
+    apply_llama_defaults
+    require_model_file
+    prepare_log_dir
+    build_llama_runtime_args
+    print_banner
+
+    CONTAINER_NAME="llama-$$"
+    LOG_PIDS=()
+    trap cleanup EXIT INT TERM
+
+    start_llama_container
+    follow_or_wait
+}
+
+main "$@"
