@@ -1,6 +1,5 @@
 #! /bin/bash
-
-VERSION="0.4.0"
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
