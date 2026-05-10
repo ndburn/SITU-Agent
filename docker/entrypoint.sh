@@ -44,8 +44,8 @@ if ! lm_ready; then
     [ "${SILENT:-0}" = "0" ] && printf "\r\033[K  Connected\n" >&2
 fi
 
-MODELS_FILE="/root/.pi/agent/models.json"
-SETTINGS_FILE="/root/.pi/agent/settings.json"
+MODELS_FILE="/home/situ/.pi/agent/models.json"
+SETTINGS_FILE="/home/situ/.pi/agent/settings.json"
 
 # Auto-detect the running model when MODEL is not set
 if [ -z "${MODEL:-}" ]; then

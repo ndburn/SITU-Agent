@@ -70,14 +70,22 @@ COPY --from=agent-builder /opt/pi-mono/packages/tui ./packages/tui
 RUN echo '#!/bin/bash\nnode /opt/pi-mono/packages/coding-agent/dist/cli.js "$@"' > /usr/local/bin/pi && \
     chmod +x /usr/local/bin/pi
 
+# Non-root user for the agent. UID 1000 is mapped from the host user
+# at runtime via `podman run --userns=keep-id:uid=1000,gid=1000`.
+RUN useradd -m -u 1000 -s /bin/bash situ
+
 # Setup default configuration for pi
-RUN mkdir -p /root/.pi/agent
-COPY docker/agent/ /root/.pi/agent/
+RUN mkdir -p /home/situ/.pi/agent && chown -R situ:situ /home/situ/.pi
+COPY --chown=situ:situ docker/agent/ /home/situ/.pi/agent/
+RUN chmod -R u+rwX,go+rX /home/situ/.pi
 
-# Entrypoint script
+# Entrypoint script (root-owned, executable, readable by all).
+# Force 0755 — `chmod +x` would preserve restrictive host perms (e.g. 0700
+# on iCloud Drive), making the script unreadable to the non-root `situ` user.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
+USER situ
 WORKDIR /workspace
 
 ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]

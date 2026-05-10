@@ -83,6 +83,8 @@ cleanup() {
 start_llama_container() {
     podman run -d \
         --name "${CONTAINER_NAME}" \
+        --userns=keep-id \
+        --user "$(id -u):$(id -g)" \
         --publish "0.0.0.0:${LM_PORT}:${LM_PORT}" \
         "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \

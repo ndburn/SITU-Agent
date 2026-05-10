@@ -175,18 +175,25 @@ watch_llama_sidecar() {
 }
 
 create_pod() {
+    # Map host UID/GID to uid/gid 1000 (the `situ` user) inside the pod's
+    # user namespace, so the agent runs unprivileged and bind-mounted
+    # /workspace files are owned correctly on both sides.
+    local userns_args=(--userns=keep-id:uid=1000,gid=1000)
     if [ "${MODE}" = "RESTRICTED" ]; then
-        podman pod create --name "${POD_NAME}" --network=none > /dev/null
+        podman pod create --name "${POD_NAME}" "${userns_args[@]}" --network=none > /dev/null
     else
-        podman pod create --name "${POD_NAME}" > /dev/null
+        podman pod create --name "${POD_NAME}" "${userns_args[@]}" > /dev/null
     fi
 }
 
 start_llama_sidecar() {
     require_model_file
     build_llama_runtime_args
+    # Pod's userns maps host UID -> 1000 inside, so run llama as uid 1000
+    # to land on the host user outside (and read /models, which is host-owned).
     podman run --pod "${POD_NAME}" -d \
         --name "${POD_NAME}-llama" \
+        --user 1000:1000 \
         "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
         "${LLAMA_EXTRA_VOLUMES[@]}" \
