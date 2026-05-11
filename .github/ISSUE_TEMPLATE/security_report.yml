@@ -1,0 +1,28 @@
+name: Security Vulnerability
+description: DO NOT USE THIS TEMPLATE — see the private disclosure instructions below.
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Please do not report security vulnerabilities here.
+
+        Opening a public GitHub issue exposes the vulnerability to everyone before a fix is available.
+
+        **Report privately by email:**
+        > **andreas.burner@gmail.com**
+        > Subject line: `[SITU] Security Report`
+
+        A response will follow within 72 hours.
+
+        ---
+
+        If you opened this template by accident, close this issue without submitting it and send an email instead.
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Acknowledgement
+      options:
+        - label: I understand that security reports must be sent by email, not filed as public issues.
+          required: true
