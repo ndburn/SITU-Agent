@@ -1,4 +1,10 @@
 #!/bin/bash
+set -e
+
+# Hard-override everything to the 'node' user context
+export USER="node"
+export HOME="/home/node"
+export LOGNAME="node"
 
 LM_SERVER_BASE_URL="${LM_SERVER_BASE_URL:-http://host.docker.internal:1234/v1}"
 MODEL="${MODEL:-}"
@@ -17,7 +23,7 @@ _spinner() {
 }
 
 _spin_start() { [ "${SILENT:-0}" = "1" ] && return; _spinner "$1" & SPIN_PID=$!; }
-_spin_stop()  { [ -z "${SPIN_PID:-}" ] && return; kill $SPIN_PID 2>/dev/null; wait $SPIN_PID 2>/dev/null; SPIN_PID=; }
+_spin_stop()  { [ -z "${SPIN_PID:-}" ] && return; kill $SPIN_PID 2>/dev/null; wait $SPIN_PID 2>/dev/null || true; SPIN_PID=; }
 
 lm_ready() { curl -sf "${LM_SERVER_BASE_URL}/models" -o /dev/null 2>/dev/null; }
 
@@ -31,7 +37,6 @@ if ! lm_ready; then
             _spin_stop
             printf "\r\033[K\n" >&2
             echo "Error: LM server at ${LM_SERVER_BASE_URL} did not become ready within ${LMS_READY_TIMEOUT}s." >&2
-            echo "Make sure LM Studio or llama.cpp server is running and the model is loaded." >&2
             exit 1
         fi
         if [ "${elapsed}" -eq 8 ]; then
@@ -44,58 +49,64 @@ if ! lm_ready; then
     [ "${SILENT:-0}" = "0" ] && printf "\r\033[K  Connected\n" >&2
 fi
 
-MODELS_FILE="/home/situ/.pi/agent/models.json"
-SETTINGS_FILE="/home/situ/.pi/agent/settings.json"
+# Use absolute paths to avoid any $HOME confusion
+MODELS_FILE="/home/node/.pi/agent/models.json"
+SETTINGS_FILE="/home/node/.pi/agent/settings.json"
 
-# Auto-detect the running model when MODEL is not set
+# Auto-detect model if missing
 if [ -z "${MODEL:-}" ]; then
     MODEL=$(curl -sf "${LM_SERVER_BASE_URL}/models" | node -e "
-const d = require('fs').readFileSync('/dev/stdin', 'utf8');
-try { const m = JSON.parse(d); if (m.data && m.data[0]) process.stdout.write(m.data[0].id); } catch(e) {}
-")
+        const d = require('fs').readFileSync('/dev/stdin', 'utf8');
+        try { 
+            const m = JSON.parse(d); 
+            if (m.data && m.data[0]) process.stdout.write(m.data[0].id); 
+        } catch(e) {}
+    ")
 fi
 
 if [ -z "${MODEL:-}" ]; then
-    echo "Error: could not determine model. Set MODEL in your config or load a model in LM Studio." >&2
+    echo "Error: could not determine model." >&2
     exit 1
 fi
 
+# Update configuration files via node
 node -e "
 const fs = require('fs');
-const cfg = JSON.parse(fs.readFileSync('${MODELS_FILE}', 'utf8'));
-const provider = cfg.providers['lm-server'];
-provider.baseUrl = '${LM_SERVER_BASE_URL}';
-provider.models[0].id = '${MODEL}';
-fs.writeFileSync('${MODELS_FILE}', JSON.stringify(cfg, null, 2));
+try {
+    const cfg = JSON.parse(fs.readFileSync('${MODELS_FILE}', 'utf8'));
+    cfg.providers['lm-server'].baseUrl = '${LM_SERVER_BASE_URL}';
+    cfg.providers['lm-server'].models[0].id = '${MODEL}';
+    fs.writeFileSync('${MODELS_FILE}', JSON.stringify(cfg, null, 2));
 
-const settings = JSON.parse(fs.readFileSync('${SETTINGS_FILE}', 'utf8'));
-settings.defaultModel = '${MODEL}';
-fs.writeFileSync('${SETTINGS_FILE}', JSON.stringify(settings, null, 2));
+    const settings = JSON.parse(fs.readFileSync('${SETTINGS_FILE}', 'utf8'));
+    settings.defaultModel = '${MODEL}';
+    fs.writeFileSync('${SETTINGS_FILE}', JSON.stringify(settings, null, 2));
+} catch (e) {
+    console.error('Error updating config at ${MODELS_FILE}:', e.message);
+    process.exit(1);
+}
 "
 
 if [ $# -eq 0 ]; then
     exec bash
 fi
 
-# In non-interactive (query) mode stdout is not a TTY; show a working spinner
-# while the agent thinks. Kill it on the first byte of output so the spinner
-# never overlaps with the response, then stream the rest unbuffered.
+# In non-interactive mode show spinner while agent thinks
 if [ ! -t 1 ]; then
     _spin_start "Working"
     "$@" | (
         if IFS= read -r -N 1 first_char; then
-            kill "$SPIN_PID" 2>/dev/null
+            kill "$SPIN_PID" 2>/dev/null || true
             printf "\r\033[K" >&2
             printf "%s" "$first_char"
             cat
         else
-            kill "$SPIN_PID" 2>/dev/null
+            kill "$SPIN_PID" 2>/dev/null || true
             printf "\r\033[K" >&2
         fi
     )
     CODE=${PIPESTATUS[0]}
-    kill $SPIN_PID 2>/dev/null
-    wait $SPIN_PID 2>/dev/null
+    _spin_stop
     exit $CODE
 fi
 

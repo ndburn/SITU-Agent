@@ -143,26 +143,26 @@ cleanup() {
 start_situ_log_tail() {
     [ -z "${LOG_DIR}" ] && return 0
     (
-        while ! podman container exists "${POD_NAME}" 2>/dev/null; do sleep 0.2; done
-        podman logs -f "${POD_NAME}" > "${LOG_DIR}/situ_${LOG_TS}.log" 2>&1
+        while ! podman container exists "${AGENT_NAME}" 2>/dev/null; do sleep 0.2; done
+        podman logs -f "${AGENT_NAME}" > "${LOG_DIR}/situ_${LOG_TS}.log" 2>&1
     ) &
     LOG_PIDS+=($!)
 }
 
 watch_llama_sidecar() {
     (
-        while ! podman container exists "${POD_NAME}-llama" 2>/dev/null; do
+        while ! podman container exists "${LLAMA_NAME}" 2>/dev/null; do
             sleep 0.2
         done
         while :; do
-            STATE=$(podman inspect --format '{{.State.Status}}' "${POD_NAME}-llama" 2>/dev/null) || return
+            STATE=$(podman inspect --format '{{.State.Status}}' "${LLAMA_NAME}" 2>/dev/null) || return
             if [ "$STATE" != "running" ] && [ "$STATE" != "created" ]; then
-                CODE=$(podman inspect --format '{{.State.ExitCode}}' "${POD_NAME}-llama" 2>/dev/null || echo "?")
+                CODE=$(podman inspect --format '{{.State.ExitCode}}' "${LLAMA_NAME}" 2>/dev/null || echo "?")
                 {
                     echo ""
                     echo "Error: llama.cpp sidecar exited (status=${STATE}, exit=${CODE})."
                     echo "--- llama.cpp last 30 log lines ---"
-                    podman logs --tail 30 "${POD_NAME}-llama" 2>&1
+                    podman logs --tail 30 "${LLAMA_NAME}" 2>&1
                     echo "------------------------------------"
                 } | awk '{printf "%s\r\n", $0}' >&2
                 podman stop -t 0 "${POD_NAME}" >/dev/null 2>&1 || true
@@ -176,9 +176,10 @@ watch_llama_sidecar() {
 
 create_pod() {
     # Map host UID/GID to uid/gid 1000 (the `situ` user) inside the pod's
-    # user namespace, so the agent runs unprivileged and bind-mounted
-    # /workspace files are owned correctly on both sides.
+    # user namespace. We use a simpler mapping if the host user is already 1000.
     local userns_args=(--userns=keep-id:uid=1000,gid=1000)
+    [ "$(id -u)" = "1000" ] && userns_args=(--userns=keep-id)
+
     if [ "${MODE}" = "RESTRICTED" ]; then
         podman pod create --name "${POD_NAME}" "${userns_args[@]}" --network=none > /dev/null
     else
@@ -192,7 +193,7 @@ start_llama_sidecar() {
     # Pod's userns maps host UID -> 1000 inside, so run llama as uid 1000
     # to land on the host user outside (and read /models, which is host-owned).
     podman run --pod "${POD_NAME}" -d \
-        --name "${POD_NAME}-llama" \
+        --name "${LLAMA_NAME}" \
         --user 1000:1000 \
         "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
@@ -206,7 +207,7 @@ start_llama_sidecar() {
         --temp "${TEMPERATURE}" \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
-        tail_container_to_file "${POD_NAME}-llama" "${LOG_DIR}/llama_${LOG_TS}.log"
+        tail_container_to_file "${LLAMA_NAME}" "${LOG_DIR}/llama_${LOG_TS}.log"
     fi
     watch_llama_sidecar
 }
@@ -238,7 +239,8 @@ run_test_session() {
     start_situ_log_tail
     podman run --rm -it \
         --pod "${POD_NAME}" \
-        --name "${POD_NAME}" \
+        --name "${AGENT_NAME}" \
+        --user 1000:1000 \
         "${SITU_ENV[@]}" \
         situ:latest \
         bash -c "$TESTSCRIPT"
@@ -248,7 +250,8 @@ run_query_session() {
     start_situ_log_tail
     podman run --rm \
         --pod "${POD_NAME}" \
-        --name "${POD_NAME}" \
+        --name "${AGENT_NAME}" \
+        --user 1000:1000 \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
@@ -259,7 +262,8 @@ run_interactive_session() {
     start_situ_log_tail
     podman run --rm -it \
         --pod "${POD_NAME}" \
-        --name "${POD_NAME}" \
+        --name "${AGENT_NAME}" \
+        --user 1000:1000 \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
@@ -275,10 +279,15 @@ main() {
     prepare_log_dir
     print_banner
 
-    POD_NAME="situ-$$"
+    # Use distinct names for Pod and Container to avoid OCI runtime collisions
+    POD_NAME=$(generate_unique_name "situ-pod")
+    AGENT_NAME="situ-agent-$$"
+    LLAMA_NAME="situ-llama-$$"
+
     LOG_PIDS=()
     trap cleanup EXIT INT TERM
 
+    reset_stale_resources "${POD_NAME}"
     create_pod
     resolve_lm_server_base_url
     build_situ_env

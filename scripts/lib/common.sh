@@ -2,7 +2,7 @@
 # Shared helpers for scripts/situ.sh and scripts/llamaservice.sh.
 # Source from a script that has already set SCRIPT_DIR.
 
-VERSION="0.6.0"
+VERSION="0.7.0"
 
 die() {
     echo "Error: $*" >&2
@@ -75,4 +75,33 @@ tail_container_to_file() {
     local container="$1" logfile="$2"
     podman logs -f "${container}" > "${logfile}" 2>&1 &
     LOG_PIDS+=($!)
+}
+
+# Returns a unique name with PID and timestamp.
+generate_unique_name() {
+    local prefix="$1"
+    echo "${prefix}-$$-$(date +%s)"
+}
+
+# Cleans up stale resources and resets failed systemd scopes.
+# This prevents "File exists" OCI errors from previous interrupted runs.
+# $1: (optional) Pod or container name to remove.
+reset_stale_resources() {
+    local target="$1"
+    if [ -n "$target" ]; then
+        podman pod rm -f "$target" > /dev/null 2>&1 || true
+        podman rm -f "$target" > /dev/null 2>&1 || true
+    fi
+    # Kill any leftover situ pods/containers/networks from interrupted previous runs.
+    # Stale llama containers can hold port 8080 in the VM and cause lm_ready
+    # to return true before the current run's sidecar has started.
+    podman pod ps --format '{{.Name}}' 2>/dev/null \
+        | grep '^situ-pod-' \
+        | xargs -r podman pod rm -f > /dev/null 2>&1 || true
+    podman ps -a --format '{{.Names}}' 2>/dev/null \
+        | grep -E '^situ-(agent|llama)-' \
+        | xargs -r podman rm -f > /dev/null 2>&1 || true
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user reset-failed "libpod-*.scope" >/dev/null 2>&1 || true
+    fi
 }

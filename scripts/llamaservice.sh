@@ -120,10 +120,11 @@ main() {
     build_llama_runtime_args
     print_banner
 
-    CONTAINER_NAME="llama-$$"
+    CONTAINER_NAME=$(generate_unique_name "llama")
     LOG_PIDS=()
     trap cleanup EXIT INT TERM
 
+    reset_stale_resources "${CONTAINER_NAME}"
     start_llama_container
     follow_or_wait
 }
