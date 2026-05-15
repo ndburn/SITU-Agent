@@ -59,13 +59,12 @@ COPY --from=agent-builder /opt/pi-mono/packages/tui ./packages/tui
 RUN echo '#!/bin/bash\nnode /opt/pi-mono/packages/coding-agent/dist/cli.js "$@"' > /usr/local/bin/pi && \
     chmod +x /usr/local/bin/pi
 
-# UID 1000 is mapped from the host user at runtime via `podman run --userns=keep-id:uid=1000,gid=1000`.
 ENV HOME=/home/node
 
 # Setup default configuration for pi
 RUN mkdir -p /home/node/.pi/agent && chown -R node:node /home/node/.pi
 COPY --chown=node:node docker/agent/ /home/node/.pi/agent/
-RUN chmod -R u+rwX,go+rX /home/node/.pi
+RUN chmod -R a+rwX /home/node/.pi
 
 # Entrypoint script (root-owned, executable, readable by all).
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
