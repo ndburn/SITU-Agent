@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# Hard-override everything to the 'node' user context
-export USER="node"
-export HOME="/home/node"
-export LOGNAME="node"
-
 LM_SERVER_BASE_URL="${LM_SERVER_BASE_URL:-http://host.docker.internal:1234/v1}"
 MODEL="${MODEL:-}"
 LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
@@ -50,16 +45,16 @@ if ! lm_ready; then
 fi
 
 # Use absolute paths to avoid any $HOME confusion
-MODELS_FILE="/home/node/.pi/agent/models.json"
-SETTINGS_FILE="/home/node/.pi/agent/settings.json"
+MODELS_FILE="/root/.pi/agent/models.json"
+SETTINGS_FILE="/root/.pi/agent/settings.json"
 
 # Auto-detect model if missing
 if [ -z "${MODEL:-}" ]; then
     MODEL=$(curl -sf "${LM_SERVER_BASE_URL}/models" | node -e "
         const d = require('fs').readFileSync('/dev/stdin', 'utf8');
-        try { 
-            const m = JSON.parse(d); 
-            if (m.data && m.data[0]) process.stdout.write(m.data[0].id); 
+        try {
+            const m = JSON.parse(d);
+            if (m.data && m.data[0]) process.stdout.write(m.data[0].id);
         } catch(e) {}
     ")
 fi

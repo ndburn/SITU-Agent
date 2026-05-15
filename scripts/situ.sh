@@ -157,16 +157,21 @@ watch_llama_sidecar() {
         while :; do
             STATE=$(podman inspect --format '{{.State.Status}}' "${LLAMA_NAME}" 2>/dev/null) || return
             if [ "$STATE" != "running" ] && [ "$STATE" != "created" ]; then
-                CODE=$(podman inspect --format '{{.State.ExitCode}}' "${LLAMA_NAME}" 2>/dev/null || echo "?")
-                {
-                    echo ""
-                    echo "Error: llama.cpp sidecar exited (status=${STATE}, exit=${CODE})."
-                    echo "--- llama.cpp last 30 log lines ---"
-                    podman logs --tail 30 "${LLAMA_NAME}" 2>&1
-                    echo "------------------------------------"
-                } | awk '{printf "%s\r\n", $0}' >&2
-                podman stop -t 0 "${POD_NAME}" >/dev/null 2>&1 || true
-                kill -TERM $$ 2>/dev/null || true
+                # If the agent is no longer running, this is normal pod teardown after the
+                # agent finished — not a sidecar crash. Only error if the agent is still up.
+                AGENT_STATE=$(podman inspect --format '{{.State.Status}}' "${AGENT_NAME}" 2>/dev/null || echo "gone")
+                if [ "$AGENT_STATE" = "running" ]; then
+                    CODE=$(podman inspect --format '{{.State.ExitCode}}' "${LLAMA_NAME}" 2>/dev/null || echo "?")
+                    {
+                        echo ""
+                        echo "Error: llama.cpp sidecar exited (status=${STATE}, exit=${CODE})."
+                        echo "--- llama.cpp last 30 log lines ---"
+                        podman logs --tail 30 "${LLAMA_NAME}" 2>&1
+                        echo "------------------------------------"
+                    } | awk '{printf "%s\r\n", $0}' >&2
+                    podman stop -t 0 "${POD_NAME}" >/dev/null 2>&1 || true
+                    kill -TERM $$ 2>/dev/null || true
+                fi
                 return
             fi
             sleep 1
@@ -234,7 +239,6 @@ run_test_session() {
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${AGENT_NAME}" \
-        --user "$(id -u):$(id -g)" \
         "${SITU_ENV[@]}" \
         situ:latest \
         bash -c "$TESTSCRIPT"
@@ -242,10 +246,14 @@ run_test_session() {
 
 run_query_session() {
     start_situ_log_tail
+    # No --user on agent containers: pi-mono's agent loop branches on
+    # process.getuid() === 0 inside the container (see
+    # memory/project_situ_perf_traps.md). Running as in-namespace UID 0
+    # via rootless podman's default mapping keeps us at the fast trajectory;
+    # the host kernel still sees only the unprivileged invoking user.
     podman run --rm \
         --pod "${POD_NAME}" \
         --name "${AGENT_NAME}" \
-        --user "$(id -u):$(id -g)" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
@@ -260,7 +268,6 @@ run_interactive_session() {
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${AGENT_NAME}" \
-        --user "$(id -u):$(id -g)" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \

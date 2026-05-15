@@ -54,7 +54,19 @@ build_llama_runtime_args() {
     LLAMA_EXTRA_ARGS=()
     if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
         LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
-        LLAMA_GPU_LAYERS=(--n-gpu-layers 999)
+        LLAMA_GPU_LAYERS=(--n-gpu-layers 999 --flash-attn on)
+    elif [[ "$(uname -s)" == "Darwin" ]]; then
+        # mlock prevents macOS from paging KV cache to disk
+        LLAMA_GPU_LAYERS=(--n-gpu-layers 99 --flash-attn on \
+            -b 2048 -ub 2048 \
+            --mlock)
+    else
+        # Pin to physical cores; hyperthreads thrash L3 on decode.
+        # flash-attn left to llama.cpp's auto (CPU flash-attn has historical perf quirks)
+        local phys_cores
+        phys_cores=$(grep -m1 "cpu cores" /proc/cpuinfo 2>/dev/null | awk '{print $4}')
+        phys_cores=${phys_cores:-$(nproc 2>/dev/null || echo 4)}
+        LLAMA_GPU_LAYERS=(-t "${phys_cores}")
     fi
     if [ -n "${LLAMA_CONFIG_FILE:-}" ]; then
         [ -f "${LLAMA_CONFIG_FILE}" ] || die "llama config file not found: ${LLAMA_CONFIG_FILE}"
