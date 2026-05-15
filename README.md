@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg?style=for-the-badge)](LICENSE)
 [![Runs Locally](https://img.shields.io/badge/Runs-100%25%20Local-blue?style=for-the-badge)](#)
-[![Air-Gapped](https://img.shields.io/badge/Network-None-red?style=for-the-badge)](#)
+[![Isolated](https://img.shields.io/badge/Network-None-red?style=for-the-badge)](#)
 [![Podman](https://img.shields.io/badge/Powered%20by-Podman-892CA0?style=for-the-badge&logo=podman&logoColor=white)](https://podman.io)
 
 [**Website**](https://situagent.com) &nbsp;·&nbsp; [**Knowledge Base**](https://situagent.com/kb/kb.html) &nbsp;·&nbsp; [**Install Guide**](https://situagent.com/kb/kb.html#firststeps.html)
