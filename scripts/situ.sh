@@ -105,7 +105,7 @@ apply_situ_overrides() {
     CTX_SIZE="${_CLI_CTX_SIZE:-${CTX_SIZE}}"
     TEMPERATURE="${_CLI_TEMPERATURE:-${TEMPERATURE}}"
     MODEL="${_CLI_MODEL:-${MODEL}}"
-    LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
+    LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-60}"
 }
 
 validate_situ_config() {
@@ -136,8 +136,8 @@ print_banner() {
 }
 
 cleanup() {
-    kill_tracked_pids
     podman pod rm -f "${POD_NAME}" > /dev/null 2>&1 || true
+    kill_tracked_pids
 }
 
 start_situ_log_tail() {
@@ -166,6 +166,7 @@ watch_llama_sidecar() {
                     echo "------------------------------------"
                 } | awk '{printf "%s\r\n", $0}' >&2
                 podman stop -t 0 "${POD_NAME}" >/dev/null 2>&1 || true
+                kill -TERM $$ 2>/dev/null || true
                 return
             fi
             sleep 1
@@ -175,26 +176,19 @@ watch_llama_sidecar() {
 }
 
 create_pod() {
-    # Map host UID/GID to uid/gid 1000 (the `situ` user) inside the pod's
-    # user namespace. We use a simpler mapping if the host user is already 1000.
-    local userns_args=(--userns=keep-id:uid=1000,gid=1000)
-    [ "$(id -u)" = "1000" ] && userns_args=(--userns=keep-id)
-
     if [ "${MODE}" = "RESTRICTED" ]; then
-        podman pod create --name "${POD_NAME}" "${userns_args[@]}" --network=none > /dev/null
+        podman pod create --name "${POD_NAME}" --network=none > /dev/null
     else
-        podman pod create --name "${POD_NAME}" "${userns_args[@]}" > /dev/null
+        podman pod create --name "${POD_NAME}" > /dev/null
     fi
 }
 
 start_llama_sidecar() {
     require_model_file
     build_llama_runtime_args
-    # Pod's userns maps host UID -> 1000 inside, so run llama as uid 1000
-    # to land on the host user outside (and read /models, which is host-owned).
     podman run --pod "${POD_NAME}" -d \
         --name "${LLAMA_NAME}" \
-        --user 1000:1000 \
+        --user "$(id -u):$(id -g)" \
         "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
         "${LLAMA_EXTRA_VOLUMES[@]}" \
@@ -240,7 +234,7 @@ run_test_session() {
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${AGENT_NAME}" \
-        --user 1000:1000 \
+        --user "$(id -u):$(id -g)" \
         "${SITU_ENV[@]}" \
         situ:latest \
         bash -c "$TESTSCRIPT"
@@ -251,11 +245,14 @@ run_query_session() {
     podman run --rm \
         --pod "${POD_NAME}" \
         --name "${AGENT_NAME}" \
-        --user 1000:1000 \
+        --user "$(id -u):$(id -g)" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
-        pi "$QUERY"
+        pi "$QUERY" &
+    local pid=$!
+    LOG_PIDS+=($pid)
+    wait $pid
 }
 
 run_interactive_session() {
@@ -263,7 +260,7 @@ run_interactive_session() {
     podman run --rm -it \
         --pod "${POD_NAME}" \
         --name "${AGENT_NAME}" \
-        --user 1000:1000 \
+        --user "$(id -u):$(id -g)" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
