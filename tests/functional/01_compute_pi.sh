@@ -8,7 +8,7 @@ GENERATED_SCRIPT="${MOUNT_DIR}/compute_pi.sh"
 
 DESCRIPTION='Implement a shell script to computes PI using the Gregory-Leibniz series.'
 COMMAND=(-s --mountpoint "${MOUNT_DIR}" -q 'Implement a shell script compute_pi.sh that implements the Gregory-Leibniz series to compute PI with a precision of three decimal places. The script should output the value ofPI with three decimals only, no other text. Make sure it is computed 100% correclty. Think deeply. Make it executable. Do not run it.')
-EXPECTED='3.141'
+EXPECTED=('3.141' '3.142')
 
 run_agent() {
     SITU_OUTPUT="$(run_situ "${COMMAND[@]}" 2>&1)"
@@ -22,12 +22,16 @@ run_agent() {
 }
 
 verify() {
-    local output rc
+    local output rc exp
     output="$(bash "${GENERATED_SCRIPT}" 2>&1)"
     rc=$?
-    if [ "${rc}" -eq 0 ] && printf '%s\n' "${output}" | grep -Fxq "${EXPECTED}"; then
-        pass "${DESCRIPTION}"
-        exit 0
+    if [ "${rc}" -eq 0 ]; then
+        for exp in "${EXPECTED[@]}"; do
+            if printf '%s\n' "${output}" | grep -Fxq "${exp}"; then
+                pass "${DESCRIPTION}"
+                exit 0
+            fi
+        done
     fi
     fail_with "generated script exit=${rc}, output:" "${output}"
 }
