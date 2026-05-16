@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 DESCRIPTION='Check network isolation (LM reachable, external HTTP/HTTPS/DNS/TCP blocked)'
-COMMAND=(-s -t)
+COMMAND=(-q -t)
 EXPECTED=(
     'LM server is reachable'
     'External HTTP is blocked'

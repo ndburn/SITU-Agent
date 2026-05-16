@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 usage() {
     cat >&2 <<EOF
-Usage: situ [options]
+Usage: situ [options] ['<prompt>']
 
 Options:
   -c, --config <file>           Use a specific config file (default: situ.conf).
@@ -19,16 +19,17 @@ Options:
       --mode <RESTRICTED|NETWORK>  Override MODE from the config file.
       --model <gguf>            Override MODEL (GGUF filename in LMSTUDIO_MODELS).
       --mountpoint <dir>        Override MOUNTPOINT (directory mounted as /workspace).
-  -q, --query '<prompt>'        Run a single query non-interactively and exit.
-  -s, --silent                  Suppress status messages (useful when piping output).
+  -p, --prompt '<prompt>'       Run a single prompt non-interactively and exit.
+  -q, --quiet                   Suppress status messages (useful when piping output).
   -T, --temperature <value>     Sampling temperature for the llama.cpp sidecar (default: 0.1, local sidecar only).
   -t, --test                    Verify configuration and network isolation.
 
 Examples:
   situ.sh                                        Start an interactive session.
   situ.sh -c situ2.conf                          Use situ2.conf as the config.
-  situ.sh -q 'Who was Albert Einstein?'          Run a single query and exit.
-  situ.sh -s -q 'Who was Albert Einstein?'       Run query and suppress status messages.
+  situ.sh 'Who was Albert Einstein?'             Run a single prompt and exit.
+  situ.sh -p 'Who was Albert Einstein?'          Run a single prompt and exit.
+  situ.sh -q 'Who was Albert Einstein?'          Run prompt and suppress status messages.
   situ.sh --model gemma-4-E4B-it-Q4_K_M.gguf --ctx-size 32000
                                                  Override config values for one run.
   situ.sh --test                                 Verify configuration and network isolation.
@@ -54,10 +55,10 @@ parse_cli_args() {
             -c|--config)
                 [ $# -ge 2 ] || die "--config requires an argument"
                 CONFIG_FILE_ARG="$2"; shift 2 ;;
-            -s|--silent)
+            -q|--quiet)
                 SILENT=1; shift ;;
-            -q|--query)
-                [ $# -ge 2 ] || die "--query requires an argument"
+            -p|--prompt)
+                [ $# -ge 2 ] || die "--prompt requires an argument"
                 QUERY="$2"; shift 2 ;;
             --llama-config)
                 [ $# -ge 2 ] || die "--llama-config requires an argument"
@@ -89,10 +90,13 @@ parse_cli_args() {
                 RUN_TEST=1; shift ;;
             -h|--help)
                 usage; exit 0 ;;
-            *)
+            -*)
                 echo "Unknown option: $1" >&2
                 usage
                 exit 1 ;;
+            *)
+                [ -z "${QUERY}" ] || die "Unexpected positional argument: $1"
+                QUERY="$1"; shift ;;
         esac
     done
 }

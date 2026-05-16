@@ -14,7 +14,7 @@ Options:
   -h, --help                    Show this help message and exit.
       --llama-config <file>     Inject a llama.cpp JSON config file into the server.
   -l, --log <directory>         Write logs to <directory>/llama_<ts>.log.
-  -s, --silent                  Suppress status messages (useful when piping output).
+  -q, --quiet                   Suppress status messages (useful when piping output).
   --                            End of options. Everything after is forwarded verbatim
                                 to the llama.cpp server (overrides script defaults
                                 and --llama-config JSON config; last value wins).
@@ -40,7 +40,7 @@ parse_cli_args() {
             -c|--config)
                 [ $# -ge 2 ] || die "--config requires an argument"
                 CONFIG_FILE_ARG="$2"; shift 2 ;;
-            -s|--silent)
+            -q|--quiet)
                 SILENT=1; shift ;;
             --llama-config)
                 [ $# -ge 2 ] || die "--llama-config requires an argument"
