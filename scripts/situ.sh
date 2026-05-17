@@ -208,6 +208,7 @@ start_llama_sidecar() {
         --host 0.0.0.0 \
         --ctx-size "${CTX_SIZE}" \
         --temp "${TEMPERATURE}" \
+        --jinja \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
         tail_container_to_file "${LLAMA_NAME}" "${LOG_DIR}/llama_${LOG_TS}.log"
@@ -231,6 +232,8 @@ build_situ_env() {
         -e LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT}"
         -e MODE="${MODE}"
         -e CTX_SIZE="${CTX_SIZE}"
+        -e MAX_TOKENS="${MAX_TOKENS:-16384}"
+        -e REASONING="${REASONING:-true}"
         -e LM_HOST="${LM_HOST:-}"
         -e SILENT="${SILENT}"
     )

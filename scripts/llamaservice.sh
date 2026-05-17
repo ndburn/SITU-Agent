@@ -95,6 +95,7 @@ start_llama_container() {
         --host 0.0.0.0 \
         --ctx-size "${CTX_SIZE}" \
         --temp "${TEMPERATURE}" \
+        --jinja \
         "${LLAMA_GPU_LAYERS[@]}" \
         "${LLAMA_PASSTHROUGH[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then

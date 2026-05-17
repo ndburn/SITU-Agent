@@ -4,6 +4,9 @@ set -e
 LM_SERVER_BASE_URL="${LM_SERVER_BASE_URL:-http://host.docker.internal:1234/v1}"
 MODEL="${MODEL:-}"
 LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
+CTX_SIZE="${CTX_SIZE:-64000}"
+MAX_TOKENS="${MAX_TOKENS:-16384}"
+REASONING="${REASONING:-true}"
 
 # Runs in background; caller must kill $SPIN_PID and wait
 _spinner() {
@@ -71,6 +74,9 @@ try {
     const cfg = JSON.parse(fs.readFileSync('${MODELS_FILE}', 'utf8'));
     cfg.providers['lm-server'].baseUrl = '${LM_SERVER_BASE_URL}';
     cfg.providers['lm-server'].models[0].id = '${MODEL}';
+    cfg.providers['lm-server'].models[0].contextWindow = parseInt('${CTX_SIZE}');
+    cfg.providers['lm-server'].models[0].maxTokens = parseInt('${MAX_TOKENS}');
+    cfg.providers['lm-server'].models[0].reasoning = '${REASONING}' === 'true';
     fs.writeFileSync('${MODELS_FILE}', JSON.stringify(cfg, null, 2));
 
     const settings = JSON.parse(fs.readFileSync('${SETTINGS_FILE}', 'utf8'));
