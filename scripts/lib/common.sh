@@ -2,7 +2,7 @@
 # Shared helpers for scripts/situ.sh and scripts/llamaservice.sh.
 # Source from a script that has already set SCRIPT_DIR.
 
-VERSION="0.9.0"
+VERSION="0.9.1"
 
 die() {
     echo "Error: $*" >&2
@@ -24,8 +24,9 @@ apply_llama_defaults() {
     LM_PORT="${LM_PORT:-8080}"
     LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}"
     LMSTUDIO_MODELS="${LMSTUDIO_MODELS:-$HOME/.situ/models}"
-    CTX_SIZE="${CTX_SIZE:-64000}"
+    CTX_SIZE="${CTX_SIZE:-0}"
     TEMPERATURE="${TEMPERATURE:-0.1}"
+    PARALLEL="${PARALLEL:-1}"
     MODEL="${MODEL:-}"
 }
 
@@ -63,10 +64,11 @@ build_llama_runtime_args() {
     else
         # Pin to physical cores; hyperthreads thrash L3 on decode.
         # flash-attn left to llama.cpp's auto (CPU flash-attn has historical perf quirks)
+        # Q8_0 KV cache: ~47% memory reduction, negligible quality loss on CPU.
         local phys_cores
         phys_cores=$(grep -m1 "cpu cores" /proc/cpuinfo 2>/dev/null | awk '{print $4}')
         phys_cores=${phys_cores:-$(nproc 2>/dev/null || echo 4)}
-        LLAMA_GPU_LAYERS=(-t "${phys_cores}")
+        LLAMA_GPU_LAYERS=(-t "${phys_cores}" --cache-type-k q8_0 --cache-type-v q8_0)
     fi
     if [ -n "${LLAMA_CONFIG_FILE:-}" ]; then
         [ -f "${LLAMA_CONFIG_FILE}" ] || die "llama config file not found: ${LLAMA_CONFIG_FILE}"

@@ -9,78 +9,32 @@ source "${SITU_REPO_ROOT}/scripts/lib/common.sh"
 # artifact to a file literally named "result.html" - that filename is the
 # contract this script relies on for scoring.
 PROMPT=$(cat <<'EOF'
-Create a fully playable Player-vs-Computer Chess Game using raw HTML, CSS, and strict TypeScript. No external libraries, frameworks (React, Vue, etc.), or chess-specific engines (chess.js, Stockfish) are allowed.
-
-The application must feature a clean, functional HTML/CSS user interface alongside a high-performance, independent game engine. Your solution will be assessed strictly on its architecture, algorithmic correctness, and the separation of concerns between the visual interface and the underlying logic. Save the game into a single result.html file that can be opened in any modern web browser without a server. The file must include all necessary HTML, CSS, and JavaScript embedded within it. Do not create any other file than result.html.
-
-Implement the following requirements:
-
-1. MONOLITHIC DECOUPLED ENGINE & STATE MUTABILITY
-- The core logic must exist as an independent engine, completely decoupled from the DOM. It must track the 8x8 board state, active turns, and piece placement.
-- The engine must provide a reliable mechanism to execute a move, evaluate its outcomes, and cleanly roll back that exact move to its identical pre-move state.
-- The state mutation and rollback operations must execute fast enough to evaluate hundreds of thousands of hypothetical positions per second during AI calculations without causing memory leaks or call-stack overflows.
-
-2. REACTIVE HTML/CSS USER INTERFACE
-- Board Rendering: Build an interactive 8x8 visual grid using HTML and CSS. The board must visually represent the current engine state, rendering pieces using crisp Unicode chess symbols or styled CSS elements.
-- Interaction Layer: Implement intuitive click-to-move or drag-and-drop mechanics. When a user clicks a piece, the UI must query the engine for valid moves and visually highlight those target squares on the board.
-- State Sync: The UI must be a pure "view" layer. It cannot hold game state. It must reactively re-render or surgically update the DOM only when the underlying engine state changes.
-- Status Panel: Display a responsive sidebar or header showing the active turn, captured pieces, a move history log, and prominent alerts for critical game phases (e.g., CHECK, CHECKMATE, STALEMATE, DRAW).
-
-3. EXHAUSTIVE LAW-OF-CHESS LEGALITY FILTERING
-- The engine must calculate the complete, exact set of legal moves available to the active player on their turn. Any move attempted via the UI that is not in this set must be rejected, and the piece must snap back.
-- King Safety: A player cannot make any move that leaves or places their own King in Check. The engine must verify this by checking if any opponent piece can capture the King on the immediate next sub-ply.
-- Special Moves: Correctly validate and visually handle En Passant (revoked if not exploited immediately on the next turn) and Castling (permanently revoked if King/Rook moves; temporarily blocked if paths are occupied or threatened). Ensure pawn promotion forces a UI choice overlay (Queen/Rook/Bishop/Knight) that updates the engine upon selection.
-
-4. AUTOMATIC DRAW DETECTION
-- Threefold Repetition: The system must automatically detect when the exact same configuration of pieces, active player turn, castling rights, and en passant eligibility has occurred three times throughout the game, immediately forcing a draw state in the UI.
-- Fifty-Move Rule: The engine must automatically terminate the game as a draw if 50 consecutive turns elapse without a pawn movement or a piece capture.
-
-5. AUTONOMOUS COMPUTER OPPONENT (AI BOT)
-- The application must feature an automated computer opponent playing as the opposite color of the user.
-- Decision Latency & Horizon Management: Upon the player executing a move via the UI, the computer must autonomously calculate its response. The algorithm must look ahead a minimum of 4 consecutive plies deep.
-- Tactical Extension & Evaluation: The search must utilize a quiescence search to dynamically extend past the depth limit for unresolved captures. Decisions must mathematically balance material values against positional intellect (e.g., center control, piece development, king safety).
-- Non-Blocking Execution: The AI's heavy tree calculations must not freeze the browser's UI thread. Implement asynchronous processing breaks (e.g., Web Workers or scheduled `setTimeout`/`requestAnimationFrame` chunks) so the interface remains responsive during the computer's turn.
-
-6. CODE QUALITY & SYSTEM CONSTRAINTS
-- Use strict TypeScript. The use of 'any', 'unknown' bypasses, or structural type-assertions ('as') to circumvent compiler safety checks is prohibited.
-- Game states, match phases, and action inputs must be structured using clean discriminated unions and type-safe interfaces.
-
-Store the entire game in a single result.html file. The file must be self-contained, with all HTML, CSS, and JavaScript embedded within it. It should run in any modern web browser without requiring a server. Do not create any other files besides result.html.
+Create a fully playable, self-contained Player-vs-Computer Connect Four game embedded entirely within a single, serverless result.html file using raw HTML, CSS, and JavaScript without external libraries or frameworks. The application must track a 7-column by 6-row grid, manage player turns, and automatically detect wins across all horizontal, vertical, and diagonal lines of four, as well as draws when the board is full. Every piece — whether placed by the player or the computer — must land in the lowest unfilled row of the chosen column. The user interface must render the grid as a clean styled board where pieces appear in the correct position, highlight the winning four pieces when the game ends, and show the current game status. The computer opponent must look ahead using a minimax search to select its move; the UI must remain responsive and reflect the player's move before the computer responds.
 EOF
 )
 
 # Scoring rubric passed to the grader. Use deduction-based wording so the
 # grader is forced to find faults rather than defaulting to 10 or 1.
 SCORE_PROMPT=$(cat <<'EOF'
-You are a strict technical code reviewer performing static analysis of a single-file HTML chess game submission against the task specification shown above. You cannot run the code — assess correctness, completeness, and quality purely by reading the source. Be critical and precise — reserve 8–10 for genuinely polished, production-quality work; a functional but unremarkable implementation should land around 5–6. Most submissions have logical defects; find them.
+You are a strict reviewer performing static analysis of a single-file web application submission containing HTML, CSS, and JavaScript. Judge only against the criteria below — ignore code length, verbosity, and any stylistic preferences not listed in the rubric.
 
-Grade by starting at 10 and subtracting for each defect found in the source code:
+For each criterion, note whether the defect is present in the source. Then subtract the listed points and compute the final score starting from 10.
 
-  CRITICAL (−3 each):
-    - Move legality is not filtered: no code verifies that a move leaves the king out of check before accepting it
-    - Checkmate and stalemate are never distinguished or detected in the logic
-    - The AI has no search tree: it picks moves without any look-ahead (e.g. pure random or greedy single-ply)
+CRITICAL - Subtract 3 points each:
+- Win detection is missing or fails to check all directions (horizontal, vertical, and both diagonals).
+- The computer opponent has no look-ahead and plays randomly or greedily without minimax search.
 
-  MAJOR (−2 each):
-    - The minimax/alpha-beta search depth is hard-coded below 4 plies or the recursion clearly cannot reach 4 plies
-    - Quiescence search is absent: the search terminates at the horizon even when captures are pending
-    - En passant capture logic is missing or the en passant flag is never revoked after one turn
-    - Castling legality is not checked: missing any of — king/rook moved flag, intervening squares occupied, king passing through check
-    - Pawn promotion has no promotion-choice UI: it silently auto-promotes or the code path is absent
-    - Threefold repetition is not tracked (no position hashing or history comparison logic)
-    - Fifty-move rule counter is absent
-    - The engine's make/unmake (or equivalent rollback) corrupts state: captured pieces, castling rights, or en passant flags are not restored on unmake
-    - The UI reads or writes game state directly instead of querying the engine
-    - AI search runs synchronously on the main thread with no Web Worker or chunked async scheduling
+MAJOR - Subtract 2 points each:
+- Pieces do not drop to the lowest available row in the selected column.
+- The UI does not highlight the winning four pieces when the game ends.
+- AI calculations run synchronously on the main thread without asynchronous scheduling.
 
-  MINOR (−1 each):
-    - The evaluation function scores material only, with no positional terms (e.g. piece-square tables, center control, king safety)
-    - Legal-move highlighting has no corresponding code wired to click/selection events
-    - Status panel is missing code for any of: active turn, captured pieces, move history, check/checkmate/stalemate/draw alerts
-    - 'any', 'unknown', or unchecked 'as' type assertions appear in the TypeScript source
-    - Game phases or move actions are not modelled with discriminated unions or type-safe interfaces
+MINOR - Subtract 1 point each:
+- var is used instead of let or const.
+- Loose equality (== or !=) is used instead of strict equality (=== or !==).
+- Variables or functions are declared in global scope instead of being encapsulated in a module or function scope.
 
-Clamp the final score to [1, 10]. Respond with ONLY a single integer. No words, no punctuation, no explanation.
+Clamp the final score between 1 and 10. Provide the final score integer on the very first line, followed by a concise summary of the defects found on the remaining lines.
 EOF
 )
 
@@ -111,7 +65,7 @@ CUDA_SUFFIX=""
 
 usage() {
     cat <<EOF
-Usage: test_models.sh [-h|--help] [-i|--iterations N] [-s|--scorer TOOL] [--scorer-model MODEL]
+Usage: test_models.sh [-h|--help] [-i|--iterations N] [-m|--model GGUF] [-s|--scorer TOOL] [--scorer-model MODEL]
 
 Runs SITU once (or N times) per .gguf in ${MODELS_DIR} with the prompt
 embedded in this script. Records wall-clock duration, classifies failures
@@ -120,6 +74,7 @@ ${EXPECTED_FILE} on a 1-10 scale. Results are written to the run artifact direct
 
 Options:
   -i, --iterations N      Run each model N times (default: 1)
+  -m, --model GGUF        Run only this model (filename, with or without .gguf extension)
   -s, --scorer TOOL       Scorer CLI to use: gemini, claude, codex (default: ${SCORER})
       --scorer-model MODEL  Model passed to the scorer (default: ${SCORER_MODEL})
 
@@ -129,6 +84,7 @@ EOF
 }
 
 parse_args() {
+    MODEL_FILTER=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help) usage; exit 0 ;;
@@ -139,6 +95,14 @@ parse_args() {
                     usage; exit 1
                 fi
                 ITERATIONS="$1"
+                ;;
+            -m|--model)
+                shift
+                if [[ $# -eq 0 ]]; then
+                    echo "Error: --model requires a filename" >&2
+                    usage; exit 1
+                fi
+                MODEL_FILTER="${1%.gguf}.gguf"
                 ;;
             -s|--scorer)
                 shift
@@ -164,10 +128,15 @@ parse_args() {
 
 discover_models() {
     shopt -s nullglob
-    MODELS=( "${MODELS_DIR}"/*.gguf )
-    if [ ${#MODELS[@]} -eq 0 ]; then
-        echo "No .gguf models found in ${MODELS_DIR}" >&2
-        exit 1
+    if [ -n "${MODEL_FILTER}" ]; then
+        MODELS=( "${MODELS_DIR}/${MODEL_FILTER}" )
+        [ -f "${MODELS[0]}" ] || { echo "Model not found: ${MODELS_DIR}/${MODEL_FILTER}" >&2; exit 1; }
+    else
+        MODELS=( "${MODELS_DIR}"/*.gguf )
+        if [ ${#MODELS[@]} -eq 0 ]; then
+            echo "No .gguf models found in ${MODELS_DIR}" >&2
+            exit 1
+        fi
     fi
 }
 
@@ -362,7 +331,7 @@ invoke_scorer() {
     local prompt
     prompt="$(cat "${prompt_file}")"
     case "${SCORER}" in
-        gemini) (cd "${SCRIPT_DIR}/lib/scorer" && gemini -p "${prompt}" --model "${SCORER_MODEL}") > "${stdout_file}" 2> "${stderr_file}" ;;
+        gemini) (cd "${SCRIPT_DIR}/lib/scorer" && gemini -p "${prompt}" --model "${SCORER_MODEL}" --output-format text) > "${stdout_file}" 2> "${stderr_file}" ;;
         claude) claude -p "${prompt}" --model "${SCORER_MODEL}" --bare > "${stdout_file}" 2> "${stderr_file}" ;;
         codex)  codex exec --model "${SCORER_MODEL}" "${prompt}" > "${stdout_file}" 2> "${stderr_file}" ;;
         *)      echo "Unknown scorer: ${SCORER}. Use gemini, claude, or codex." >&2; return 1 ;;
@@ -386,7 +355,6 @@ score_one() {
     fi
 
     {
-        printf 'TASK:\n%s\n\n' "${PROMPT}"
         printf 'SUBMITTED FILE (%s):\n' "${EXPECTED_FILE}"
         cat "${generated}"
         printf '\n\n%s\n' "${SCORE_PROMPT}"
@@ -396,7 +364,7 @@ score_one() {
     invoke_scorer "${prompt_file}" "${stdout_file}" "${stderr_file}" || rc=$?
 
     local score
-    score="$(grep -oE '\b([1-9]|10)\b' "${stdout_file}" | head -n1)"
+    score="$(head -n1 "${stdout_file}" | grep -oE '\b([1-9]|10)\b')"
     if [ -z "${score}" ]; then
         echo "Scorer (${SCORER}) failed for ${gguf} (rc=${rc}). stdout:" >&2
         head -n 20 "${stdout_file}" >&2

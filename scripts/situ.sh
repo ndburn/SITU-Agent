@@ -209,6 +209,7 @@ start_llama_sidecar() {
         --ctx-size "${CTX_SIZE}" \
         --temp "${TEMPERATURE}" \
         --jinja \
+        --parallel "${PARALLEL}" \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
         tail_container_to_file "${LLAMA_NAME}" "${LOG_DIR}/llama_${LOG_TS}.log"

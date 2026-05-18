@@ -67,6 +67,18 @@ if [ -z "${MODEL:-}" ]; then
     exit 1
 fi
 
+# Resolve CTX_SIZE=0 to the model's actual training context window
+if [ "${CTX_SIZE}" = "0" ]; then
+    CTX_SIZE=$(curl -sf "${LM_SERVER_BASE_URL}/models" | node -e "
+        const d = require('fs').readFileSync('/dev/stdin', 'utf8');
+        try {
+            const m = JSON.parse(d);
+            const n = m.data && m.data[0] && m.data[0].meta && m.data[0].meta.n_ctx_train;
+            process.stdout.write(n ? String(n) : '65536');
+        } catch(e) { process.stdout.write('65536'); }
+    ")
+fi
+
 # Update configuration files via node
 node -e "
 const fs = require('fs');
