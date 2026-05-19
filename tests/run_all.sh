@@ -8,10 +8,10 @@ usage() {
 Usage: run_all.sh [-k|--keep]
 
 Runs every test under tests/nonfunctional/ then tests/functional/.
-By default, deletes everything inside tests/tmp/ (except .gitkeep) when done.
+Artifacts are written to tests/tmp/tests_YYYYMMDD_HHmm/ and deleted when done.
 
 Options:
-  -k, --keep, -keep   Preserve files in tests/tmp/ after the run (useful for inspecting failures).
+  -k, --keep, -keep   Preserve the run directory after the run (useful for inspecting failures).
 EOF
 }
 
@@ -36,9 +36,7 @@ parse_args() {
 }
 
 cleanup() {
-    if [ -d "${SITU_TMP_DIR}" ]; then
-        find "${SITU_TMP_DIR}" -mindepth 1 -maxdepth 1 ! -name '.gitkeep' -exec rm -rf {} +
-    fi
+    rm -rf "${RUN_DIR}"
 }
 
 discover_tests() {
@@ -82,8 +80,9 @@ report() {
 }
 
 parse_args "$@"
+RUN_DIR="${SITU_TMP_DIR}/tests_$(date +%Y%m%d_%H%M)"
+export SITU_TMP_DIR="${RUN_DIR}"
 mkdir -p "${SITU_TMP_DIR}"
-cleanup
 discover_tests
 run_tests
 if [ "${KEEP}" -eq 0 ]; then

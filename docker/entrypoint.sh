@@ -6,7 +6,7 @@ MODEL="${MODEL:-}"
 LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
 CTX_SIZE="${CTX_SIZE:-64000}"
 MAX_TOKENS="${MAX_TOKENS:-16384}"
-REASONING="${REASONING:-true}"
+REASONING="${REASONING:-false}"
 
 # Runs in background; caller must kill $SPIN_PID and wait
 _spinner() {

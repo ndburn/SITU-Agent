@@ -109,7 +109,7 @@ apply_situ_overrides() {
     CTX_SIZE="${_CLI_CTX_SIZE:-${CTX_SIZE}}"
     TEMPERATURE="${_CLI_TEMPERATURE:-${TEMPERATURE}}"
     MODEL="${_CLI_MODEL:-${MODEL}}"
-    LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-60}"
+    LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-180}"
 }
 
 validate_situ_config() {
@@ -195,6 +195,19 @@ create_pod() {
 start_llama_sidecar() {
     require_model_file
     build_llama_runtime_args
+    local reasoning_flag reasoning_budget reasoning_budget_msg_args=()
+    if [ "${REASONING:-false}" = "false" ]; then
+        reasoning_flag="off"
+        reasoning_budget=0
+    else
+        reasoning_flag="on"
+        if [ "${REASONING_BUDGET_MAXPERCENT:-25}" -lt 0 ]; then
+            reasoning_budget=-1
+        else
+            reasoning_budget=$(( ${MAX_TOKENS:-16384} * ${REASONING_BUDGET_MAXPERCENT:-25} / 100 ))
+        fi
+        reasoning_budget_msg_args=(--reasoning-budget-message "${REASONING_BUDGET_MESSAGE:-Let me now write the solution.}")
+    fi
     podman run --pod "${POD_NAME}" -d \
         --name "${LLAMA_NAME}" \
         --user "$(id -u):$(id -g)" \
@@ -208,7 +221,9 @@ start_llama_sidecar() {
         --host 0.0.0.0 \
         --ctx-size "${CTX_SIZE}" \
         --temp "${TEMPERATURE}" \
-        --jinja \
+        --reasoning "${reasoning_flag}" \
+        --reasoning-budget "${reasoning_budget}" \
+        "${reasoning_budget_msg_args[@]}" \
         --parallel "${PARALLEL}" \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
@@ -234,7 +249,7 @@ build_situ_env() {
         -e MODE="${MODE}"
         -e CTX_SIZE="${CTX_SIZE}"
         -e MAX_TOKENS="${MAX_TOKENS:-16384}"
-        -e REASONING="${REASONING:-true}"
+        -e REASONING="${REASONING:-false}"
         -e LM_HOST="${LM_HOST:-}"
         -e SILENT="${SILENT}"
     )

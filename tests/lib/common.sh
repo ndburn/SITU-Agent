@@ -25,7 +25,7 @@ _COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITU_TESTS_DIR="$(cd "${_COMMON_DIR}/.." && pwd)"
 SITU_REPO_ROOT="$(cd "${_COMMON_DIR}/../.." && pwd)"
 SITU_SCRIPT="${SITU_REPO_ROOT}/scripts/situ.sh"
-SITU_TMP_DIR="${SITU_TESTS_DIR}/tmp"
+SITU_TMP_DIR="${SITU_TMP_DIR:-${SITU_TESTS_DIR}/tmp}"
 
 run_situ() {
     "${SITU_SCRIPT}" "$@"
