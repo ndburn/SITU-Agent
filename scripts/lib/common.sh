@@ -55,10 +55,10 @@ build_llama_runtime_args() {
     LLAMA_EXTRA_ARGS=()
     if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
         LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
-        LLAMA_GPU_LAYERS=(--n-gpu-layers 999 --flash-attn on)
+        LLAMA_GPU_LAYERS=(--n-gpu-layers 999)
     elif [[ "$(uname -s)" == "Darwin" ]]; then
         # mlock prevents macOS from paging KV cache to disk
-        LLAMA_GPU_LAYERS=(--n-gpu-layers 99 --flash-attn on \
+        LLAMA_GPU_LAYERS=(--n-gpu-layers 99 \
             -b 2048 -ub 2048 \
             --mlock)
     else

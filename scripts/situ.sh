@@ -206,7 +206,8 @@ start_llama_sidecar() {
         else
             reasoning_budget=$(( ${MAX_TOKENS:-16384} * ${REASONING_BUDGET_MAXPERCENT:-25} / 100 ))
         fi
-        reasoning_budget_msg_args=(--reasoning-budget-message "${REASONING_BUDGET_MESSAGE:-Let me now write the solution.}")
+        local _default_budget_msg=$'\n\nLet me now write the solution.'
+        reasoning_budget_msg_args=(--reasoning-budget-message "${REASONING_BUDGET_MESSAGE:-${_default_budget_msg}}")
     fi
     podman run --pod "${POD_NAME}" -d \
         --name "${LLAMA_NAME}" \
