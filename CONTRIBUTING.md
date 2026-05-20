@@ -29,7 +29,7 @@ Use the issue templates provided:
 - **Bug report** — for broken behavior, crashes, or unexpected output.
 - **Feature request** — for new capabilities or improvements.
 
-Good bug reports include: the exact command run, your OS + Podman version, the model being used, and the full terminal output.
+Good bug reports include: the exact command run, your OS + Podman/Docker version, the model being used, and the full terminal output.
 
 ---
 
@@ -37,7 +37,7 @@ Good bug reports include: the exact command run, your OS + Podman version, the m
 
 **Prerequisites**
 
-- [Podman](https://podman.io/docs/installation) ≥ 4.x
+- [Podman](https://podman.io/docs/installation) ≥ 4.x or [Docker](https://docs.docker.com/get-started/get-docker/)
 - Bash 5+
 - A `.gguf` model file (e.g., Gemma 3, Llama 3, Qwen 2.5)
 
@@ -70,7 +70,7 @@ This confirms the LM server is reachable and that external HTTP, HTTPS, DNS, and
 | File | Purpose |
 |---|---|
 | `situ.conf` | Default config (mode, model path, ports) |
-| `scripts/situ.sh` | Entry point — parses config and launches the pod |
+| `scripts/situ.sh` | Entry point — parses config and launches the containers |
 | `scripts/build.sh` | Builds the `situ:latest` container image |
 | `docker/Dockerfile` | Two-stage build |
 | `docker/entrypoint.sh` | Patches model config at container start |
@@ -85,7 +85,7 @@ This confirms the LM server is reachable and that external HTTP, HTTPS, DNS, and
 4. If you change shell scripts, run them through `shellcheck` and fix any warnings.
 5. Open the PR and fill in the pull request template.
 
-PRs that break `--network=none` isolation will not be merged. Any change that adds a network dependency to the agent pod must be explicitly discussed in an issue first.
+PRs that break RESTRICTED mode network isolation will not be merged. Any change that adds an external network dependency to the agent container must be explicitly discussed in an issue first.
 
 ---
 

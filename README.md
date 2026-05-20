@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg?style=for-the-badge)](LICENSE)
 [![Runs Locally](https://img.shields.io/badge/Runs-100%25%20Local-blue?style=for-the-badge)](#)
 [![Isolated](https://img.shields.io/badge/Network-None-red?style=for-the-badge)](#)
-[![Podman](https://img.shields.io/badge/Powered%20by-Podman-892CA0?style=for-the-badge&logo=podman&logoColor=white)](https://podman.io)
+[![Podman](https://img.shields.io/badge/Powered%20by-Podman%20%7C%20Docker-892CA0?style=for-the-badge&logo=podman&logoColor=white)](https://podman.io)
 
 [**Website**](https://situagent.com) &nbsp;·&nbsp; [**Knowledge Base**](https://situagent.com/kb/kb.html) &nbsp;·&nbsp; [**Install Guide**](https://situagent.com/kb/kb.html#firststeps.html)
 
@@ -23,7 +23,7 @@ Most AI coding tools ship your source code to a cloud endpoint. They *promise* n
 
 **SITU doesn't ask you to trust a promise.**
 
-The agent runs inside an isolated container with `--network=none`. There is no socket. No DNS. No route to the outside world. The kernel itself enforces the boundary — not a privacy policy, not a checkbox, not a vendor's word.
+The agent runs inside an isolated container on an internal network with no external routes. There is no socket to the outside. No DNS upstream. No gateway. The kernel itself enforces the boundary — not a privacy policy, not a checkbox, not a vendor's word.
 
 If the network doesn't exist, your code can't leave through it.
 
@@ -34,7 +34,7 @@ If the network doesn't exist, your code can't leave through it.
 | | |
 |---|---|
 | **100% Local** | Runs on your own hardware with your own models. Zero cloud dependency. |
-| **Kernel-Enforced Isolation** | The agent pod has no network namespace. Isolated by construction. |
+| **Kernel-Enforced Isolation** | The agent container runs on an internal network with no external routes. Isolated by construction. |
 | **Open Source** | Every container definition and shell script — MIT licensed, fully auditable. |
 | **Model-Agnostic** | Drop in any OpenAI-compatible model: Gemma, Llama, Mistral, Qwen |
 | **Two Modes** | `RESTRICTED` for full isolation (default setting), or `NETWORK` to point at an external LM server. |
