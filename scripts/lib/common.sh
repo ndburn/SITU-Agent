@@ -2,7 +2,7 @@
 # Shared helpers for scripts/situ.sh and scripts/llamaservice.sh.
 # Source from a script that has already set SCRIPT_DIR.
 
-VERSION="0.10.1"
+VERSION="0.11.0"
 
 die() {
     echo "Error: $*" >&2
@@ -21,6 +21,11 @@ load_config_file() {
 
 # Fills in defaults for variables shared by both scripts.
 apply_llama_defaults() {
+    CONTAINER_ENGINE="${CONTAINER_ENGINE:-podman}"
+    CE="${CONTAINER_ENGINE}"
+    CE_USERNS_ARGS=()
+    [ "${CE}" = "podman" ] && CE_USERNS_ARGS=(--userns=keep-id)
+
     LM_PORT="${LM_PORT:-8080}"
     LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}"
     LMSTUDIO_MODELS="${LMSTUDIO_MODELS:-$HOME/.situ/models}"
@@ -28,6 +33,15 @@ apply_llama_defaults() {
     TEMPERATURE="${TEMPERATURE:-0.1}"
     PARALLEL="${PARALLEL:-1}"
     MODEL="${MODEL:-}"
+}
+
+# Returns 0 if the named container exists, 1 otherwise.
+ce_container_exists() {
+    if [ "${CE}" = "podman" ]; then
+        podman container exists "$1" 2>/dev/null
+    else
+        docker inspect --type container "$1" > /dev/null 2>&1
+    fi
 }
 
 # Ensures MODEL is set and the GGUF file is present in LMSTUDIO_MODELS.
@@ -54,7 +68,11 @@ build_llama_runtime_args() {
     LLAMA_EXTRA_VOLUMES=()
     LLAMA_EXTRA_ARGS=()
     if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
-        LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
+        if [ "${CE}" = "podman" ]; then
+            LLAMA_GPU_ARGS=(--device nvidia.com/gpu=all --security-opt=label=disable)
+        else
+            LLAMA_GPU_ARGS=(--gpus all --security-opt=label=disable)
+        fi
         LLAMA_GPU_LAYERS=(--n-gpu-layers 999)
     elif [[ "$(uname -s)" == "Darwin" ]]; then
         # mlock prevents macOS from paging KV cache to disk
@@ -84,10 +102,10 @@ kill_tracked_pids() {
     done
 }
 
-# Backgrounds `podman logs -f <container> > <logfile>` and tracks its PID in LOG_PIDS.
+# Backgrounds `<CE> logs -f <container> > <logfile>` and tracks its PID in LOG_PIDS.
 tail_container_to_file() {
     local container="$1" logfile="$2"
-    podman logs -f "${container}" > "${logfile}" 2>&1 &
+    ${CE} logs -f "${container}" > "${logfile}" 2>&1 &
     LOG_PIDS+=($!)
 }
 
@@ -97,25 +115,24 @@ generate_unique_name() {
     echo "${prefix}-$$-$(date +%s)"
 }
 
-# Cleans up stale resources and resets failed systemd scopes.
+# Cleans up stale resources and resets failed systemd scopes (Podman only).
 # This prevents "File exists" OCI errors from previous interrupted runs.
 # $1: (optional) Pod or container name to remove.
 reset_stale_resources() {
     local target="$1"
     if [ -n "$target" ]; then
-        podman pod rm -f "$target" > /dev/null 2>&1 || true
-        podman rm -f "$target" > /dev/null 2>&1 || true
+        ${CE} network rm "$target" > /dev/null 2>&1 || true
     fi
-    # Kill any leftover situ pods/containers/networks from interrupted previous runs.
+    # Kill any leftover situ containers/networks from interrupted previous runs.
     # Stale llama containers can hold port 8080 in the VM and cause lm_ready
     # to return true before the current run's sidecar has started.
-    podman pod ps --format '{{.Name}}' 2>/dev/null \
-        | grep '^situ-pod-' \
-        | xargs -r podman pod rm -f > /dev/null 2>&1 || true
-    podman ps -a --format '{{.Names}}' 2>/dev/null \
+    ${CE} ps -a --format '{{.Names}}' 2>/dev/null \
         | grep -E '^situ-(agent|llama)-' \
-        | xargs -r podman rm -f > /dev/null 2>&1 || true
-    if command -v systemctl >/dev/null 2>&1; then
+        | xargs -r ${CE} rm -f > /dev/null 2>&1 || true
+    ${CE} network ls --format '{{.Name}}' 2>/dev/null \
+        | grep -E '^situ-net-' \
+        | xargs -r ${CE} network rm > /dev/null 2>&1 || true
+    if [ "${CE}" = "podman" ] && command -v systemctl >/dev/null 2>&1; then
         systemctl --user reset-failed "libpod-*.scope" >/dev/null 2>&1 || true
     fi
 }

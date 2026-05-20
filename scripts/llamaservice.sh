@@ -77,11 +77,11 @@ print_banner() {
 
 cleanup() {
     kill_tracked_pids
-    podman rm -f "${CONTAINER_NAME}" > /dev/null 2>&1 || true
+    ${CE} rm -f "${CONTAINER_NAME}" > /dev/null 2>&1 || true
 }
 
 start_llama_container() {
-    podman run -d \
+    ${CE} run -d \
         --name "${CONTAINER_NAME}" \
         --user "$(id -u):$(id -g)" \
         --publish "0.0.0.0:${LM_PORT}:${LM_PORT}" \
@@ -106,9 +106,9 @@ start_llama_container() {
 
 follow_or_wait() {
     if [ "${SILENT}" = "1" ]; then
-        podman wait "${CONTAINER_NAME}" > /dev/null
+        ${CE} wait "${CONTAINER_NAME}" > /dev/null
     else
-        podman logs -f "${CONTAINER_NAME}"
+        ${CE} logs -f "${CONTAINER_NAME}"
     fi
 }
 

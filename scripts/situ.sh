@@ -140,45 +140,49 @@ print_banner() {
 }
 
 cleanup() {
-    podman pod rm -f "${POD_NAME}" > /dev/null 2>&1 || true
+    ${CE} rm -f "${LLAMA_NAME}" "${AGENT_NAME}" > /dev/null 2>&1 || true
+    ${CE} network rm "${NET_NAME}" > /dev/null 2>&1 || true
     kill_tracked_pids
 }
 
 start_situ_log_tail() {
     [ -z "${LOG_DIR}" ] && return 0
     (
-        while ! podman container exists "${AGENT_NAME}" 2>/dev/null; do sleep 0.2; done
-        podman logs -f "${AGENT_NAME}" > "${LOG_DIR}/situ_${LOG_TS}.log" 2>&1
+        while ! ce_container_exists "${AGENT_NAME}"; do sleep 0.2; done
+        ${CE} logs -f "${AGENT_NAME}" > "${LOG_DIR}/situ_${LOG_TS}.log" 2>&1
     ) &
     LOG_PIDS+=($!)
 }
 
 watch_llama_sidecar() {
     (
-        while ! podman container exists "${LLAMA_NAME}" 2>/dev/null; do
+        # Fast initial check
+        while ! ce_container_exists "${LLAMA_NAME}"; do
             sleep 0.2
         done
         while :; do
-            STATE=$(podman inspect --format '{{.State.Status}}' "${LLAMA_NAME}" 2>/dev/null) || return
+            STATE=$(${CE} inspect --format '{{.State.Status}}' "${LLAMA_NAME}" 2>/dev/null) || return
             if [ "$STATE" != "running" ] && [ "$STATE" != "created" ]; then
                 # If the agent is no longer running, this is normal pod teardown after the
                 # agent finished — not a sidecar crash. Only error if the agent is still up.
-                AGENT_STATE=$(podman inspect --format '{{.State.Status}}' "${AGENT_NAME}" 2>/dev/null || echo "gone")
+                AGENT_STATE=$(${CE} inspect --format '{{.State.Status}}' "${AGENT_NAME}" 2>/dev/null || echo "gone")
                 if [ "$AGENT_STATE" = "running" ]; then
-                    CODE=$(podman inspect --format '{{.State.ExitCode}}' "${LLAMA_NAME}" 2>/dev/null || echo "?")
+                    CODE=$(${CE} inspect --format '{{.State.ExitCode}}' "${LLAMA_NAME}" 2>/dev/null || echo "?")
                     {
                         echo ""
                         echo "Error: llama.cpp sidecar exited (status=${STATE}, exit=${CODE})."
                         echo "--- llama.cpp last 30 log lines ---"
-                        podman logs --tail 30 "${LLAMA_NAME}" 2>&1
+                        ${CE} logs --tail 30 "${LLAMA_NAME}" 2>&1
                         echo "------------------------------------"
                     } | awk '{printf "%s\r\n", $0}' >&2
-                    podman stop -t 0 "${POD_NAME}" >/dev/null 2>&1 || true
+
+                    # Aggressive kill to trigger immediate exit of the main loop
+                    ${CE} kill "${AGENT_NAME}" >/dev/null 2>&1 || true
                     kill -TERM $$ 2>/dev/null || true
                 fi
                 return
             fi
-            sleep 1
+            sleep 0.3
         done
     ) &
     LOG_PIDS+=($!)
@@ -186,9 +190,9 @@ watch_llama_sidecar() {
 
 create_pod() {
     if [ "${MODE}" = "RESTRICTED" ]; then
-        podman pod create --name "${POD_NAME}" --network=none > /dev/null
+        ${CE} network create "${NET_NAME}" --internal > /dev/null
     else
-        podman pod create --name "${POD_NAME}" > /dev/null
+        ${CE} network create "${NET_NAME}" > /dev/null
     fi
 }
 
@@ -209,9 +213,8 @@ start_llama_sidecar() {
         local _default_budget_msg=$'\n\nLet me now write the solution.'
         reasoning_budget_msg_args=(--reasoning-budget-message "${REASONING_BUDGET_MESSAGE:-${_default_budget_msg}}")
     fi
-    podman run --pod "${POD_NAME}" -d \
+    ${CE} run "${CE_USERNS_ARGS[@]}" --network "${NET_NAME}" -d \
         --name "${LLAMA_NAME}" \
-        --user "$(id -u):$(id -g)" \
         "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
         "${LLAMA_EXTRA_VOLUMES[@]}" \
@@ -235,7 +238,7 @@ start_llama_sidecar() {
 
 resolve_lm_server_base_url() {
     if [ -z "${LM_HOST:-}" ]; then
-        LM_SERVER_BASE_URL="http://127.0.0.1:${LM_PORT}/v1"
+        LM_SERVER_BASE_URL="http://${LLAMA_NAME}:${LM_PORT}/v1"
         start_llama_sidecar
     else
         LM_SERVER_BASE_URL="http://${LM_HOST}:${LM_PORT}/v1"
@@ -260,8 +263,8 @@ run_test_session() {
     local TESTSCRIPT
     TESTSCRIPT=$(cat "${SCRIPT_DIR}/lib/selftest.sh")
     start_situ_log_tail
-    podman run --rm -it \
-        --pod "${POD_NAME}" \
+    ${CE} run "${CE_USERNS_ARGS[@]}" --rm -it \
+        --network "${NET_NAME}" \
         --name "${AGENT_NAME}" \
         "${SITU_ENV[@]}" \
         situ:latest \
@@ -270,13 +273,8 @@ run_test_session() {
 
 run_query_session() {
     start_situ_log_tail
-    # No --user on agent containers: pi-mono's agent loop branches on
-    # process.getuid() === 0 inside the container (see
-    # memory/project_situ_perf_traps.md). Running as in-namespace UID 0
-    # via rootless podman's default mapping keeps us at the fast trajectory;
-    # the host kernel still sees only the unprivileged invoking user.
-    podman run --rm \
-        --pod "${POD_NAME}" \
+    ${CE} run "${CE_USERNS_ARGS[@]}" --rm \
+        --network "${NET_NAME}" \
         --name "${AGENT_NAME}" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
@@ -289,8 +287,8 @@ run_query_session() {
 
 run_interactive_session() {
     start_situ_log_tail
-    podman run --rm -it \
-        --pod "${POD_NAME}" \
+    ${CE} run "${CE_USERNS_ARGS[@]}" --rm -it \
+        --network "${NET_NAME}" \
         --name "${AGENT_NAME}" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
@@ -308,14 +306,14 @@ main() {
     print_banner
 
     # Use distinct names for Pod and Container to avoid OCI runtime collisions
-    POD_NAME=$(generate_unique_name "situ-pod")
-    AGENT_NAME="situ-agent-$$"
-    LLAMA_NAME="situ-llama-$$"
+    NET_NAME=$(generate_unique_name "situ-net")
+    AGENT_NAME=$(generate_unique_name "situ-agent")
+    LLAMA_NAME=$(generate_unique_name "situ-llama")
 
     LOG_PIDS=()
     trap cleanup EXIT INT TERM
 
-    reset_stale_resources "${POD_NAME}"
+    reset_stale_resources "${NET_NAME}"
     create_pod
     resolve_lm_server_base_url
     build_situ_env

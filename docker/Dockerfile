@@ -59,15 +59,18 @@ COPY --from=agent-builder /opt/pi-mono/packages/tui ./packages/tui
 RUN echo '#!/bin/bash\nnode /opt/pi-mono/packages/coding-agent/dist/cli.js "$@"' > /usr/local/bin/pi && \
     chmod +x /usr/local/bin/pi
 
-# Setup default configuration for pi
-RUN mkdir -p /root/.pi/agent
-COPY docker/agent/ /root/.pi/agent/
+# Setup default configuration for pi under the non-root node user's home
+RUN mkdir -p /home/node/.pi/agent && chown -R node:node /home/node/.pi
+COPY --chown=node:node docker/agent/ /home/node/.pi/agent/
+RUN chmod -R a+rwX /home/node/.pi
 
 # Entrypoint script
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /workspace
+
+USER node
 
 ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]
 CMD [ "bash" ]

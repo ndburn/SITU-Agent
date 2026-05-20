@@ -47,9 +47,8 @@ if ! lm_ready; then
     [ "${SILENT:-0}" = "0" ] && printf "\r\033[K  Connected\n" >&2
 fi
 
-# Use absolute paths to avoid any $HOME confusion
-MODELS_FILE="/root/.pi/agent/models.json"
-SETTINGS_FILE="/root/.pi/agent/settings.json"
+MODELS_FILE="${HOME}/.pi/agent/models.json"
+SETTINGS_FILE="${HOME}/.pi/agent/settings.json"
 
 # Auto-detect model if missing
 if [ -z "${MODEL:-}" ]; then

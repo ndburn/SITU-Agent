@@ -187,8 +187,9 @@ extract_mem_from_log() {
     [ -z "${logfile}" ] && { echo "-"; return; }
 
     local val
+    # Capture Total and Free from breakdown line (fields 3 and 4)
     val="$(grep -F 'CUDA0' "${logfile}" | grep -F 'breakdown_print' | tail -1 \
-        | awk -F'|' '{print $3}' | grep -oE '[0-9]+' | head -2 \
+        | awk -F'|' '{print $3, $4}' | grep -oE '[0-9]+' | head -2 \
         | awk 'NR==1{t=$1} NR==2{printf "%.1fG", (t-$1)/1024}')"
     [ -n "${val}" ] && { echo "${val}"; return; }
 
