@@ -53,6 +53,8 @@ MODELS=()
 RESULT_DURATION=()
 RESULT_STATUS=()
 RESULT_SCORE=()
+RESULT_TPS=()
+RESULT_MEM=()
 
 ITERATIONS=1
 
@@ -60,6 +62,8 @@ W_DATE=11
 W_VER=7
 W_CFG=0
 W_DUR=8
+W_TPS=5
+W_MEM=6
 W_SCORE=10
 CUDA_SUFFIX=""
 
@@ -172,6 +176,43 @@ classify_outcome() {
     echo "ERROR"
 }
 
+# Extracts peak memory from the final breakdown in a llama log.
+# GPU runs: used VRAM (total - free) from last CUDA0 line.
+# CPU runs: Host RAM total from last Host line.
+# Echoes a value like "14.5G" or "-" if no data found.
+extract_mem_from_log() {
+    local log_dir="$1"
+    local logfile
+    logfile="$(find "${log_dir}" -name "llama_*.log" 2>/dev/null | head -1)"
+    [ -z "${logfile}" ] && { echo "-"; return; }
+
+    local val
+    val="$(grep -F 'CUDA0' "${logfile}" | grep -F 'breakdown_print' | tail -1 \
+        | awk -F'|' '{print $3}' | grep -oE '[0-9]+' | head -2 \
+        | awk 'NR==1{t=$1} NR==2{printf "%.1fG", (t-$1)/1024}')"
+    [ -n "${val}" ] && { echo "${val}"; return; }
+
+    val="$(grep -F -- '- Host' "${logfile}" | grep -F 'breakdown_print' | tail -1 \
+        | awk -F'|' '{print $3}' | grep -oE '[0-9]+' | head -1 \
+        | awk '{printf "%.1fG", $1/1024}')"
+    [ -n "${val}" ] && { echo "${val}"; return; }
+
+    echo "-"
+}
+
+# Extracts average generation tok/s from the llama log in a given log dir.
+# Echoes a float like "79.9" or "-" if no data found.
+extract_tps_from_log() {
+    local log_dir="$1"
+    local logfile
+    logfile="$(find "${log_dir}" -name "llama_*.log" 2>/dev/null | head -1)"
+    [ -z "${logfile}" ] && { echo "-"; return; }
+    grep -E '^\s+eval time' "${logfile}" \
+        | grep -oE '[0-9]+\.[0-9]+ tokens per second' \
+        | grep -oE '^[0-9]+\.[0-9]+' \
+        | awk '{sum+=$1; n++} END{if(n>0) printf "%.1f", sum/n; else print "-"}'
+}
+
 init_column_widths() {
     CUDA_SUFFIX="$(detect_cuda_suffix)"
     W_CFG=13
@@ -187,15 +228,17 @@ init_column_widths() {
 }
 
 print_table_header() {
-    local sd sv sc sdu ss
+    local sd sv sc sdu st sm ss
     sd="$(printf '%.0s-' $(seq 1 $W_DATE))"
     sv="$(printf '%.0s-' $(seq 1 $W_VER))"
     sc="$(printf '%.0s-' $(seq 1 $W_CFG))"
     sdu="$(printf '%.0s-' $(seq 1 $W_DUR))"
+    st="$(printf '%.0s-' $(seq 1 $W_TPS))"
+    sm="$(printf '%.0s-' $(seq 1 $W_MEM))"
     ss="$(printf '%.0s-' $(seq 1 $W_SCORE))"
-    printf "| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_SCORE}s |\n" \
-        "Date" "Version" "Configuration" "Duration" "Assessment"
-    printf "|-%s-|-%s-|-%s-|-%s-|-%s-|\n" "${sd}" "${sv}" "${sc}" "${sdu}" "${ss}"
+    printf "| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_TPS}s | %-${W_MEM}s | %-${W_SCORE}s |\n" \
+        "Date" "Version" "Configuration" "Duration" "tok/s" "Memory" "Assessment"
+    printf "|-%s-|-%s-|-%s-|-%s-|-%s-|-%s-|-%s-|\n" "${sd}" "${sv}" "${sc}" "${sdu}" "${st}" "${sm}" "${ss}"
 }
 
 # Creates mount and log dirs for one iteration; removes any stale artifact.
@@ -252,7 +295,7 @@ run_one_model() {
     date_str="$(date +%Y-%m-%d)"
 
     local ok_dur_total=0 ok_dur_count=0 worst_status="OK"
-    local all_scores=() last_error_output=""
+    local all_scores=() tps_vals=() mem_str="-" last_error_output=""
     local mount log_dir output rc stderr_output dur_secs dur_str
 
     for (( iter=1; iter<=ITERATIONS; iter++ )); do
@@ -261,8 +304,8 @@ run_one_model() {
 
         prepare_iter_dirs "${stem}" "${iter}"
 
-        printf "${BLUE}| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_SCORE}s |${NC}\r" \
-            "[RUNNING]" "" "${gguf}${CUDA_SUFFIX}" "${iter_label# }" ""
+        printf "${BLUE}| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_TPS}s | %-${W_MEM}s | %-${W_SCORE}s |${NC}\r" \
+            "[RUNNING]" "" "${gguf}${CUDA_SUFFIX}" "${iter_label# }" "" "" ""
 
         run_situ_timed "${gguf}"
 
@@ -275,8 +318,12 @@ run_one_model() {
             OK)
                 ok_dur_total=$(( ok_dur_total + dur_secs ))
                 ok_dur_count=$(( ok_dur_count + 1 ))
-                printf "${BLUE}| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_SCORE}s |${NC}\r" \
-                    "[SCORE${iter_label}]" "" "${gguf}${CUDA_SUFFIX}" "${dur_str}" ""
+                local tps
+                tps="$(extract_tps_from_log "${log_dir}")"
+                [[ "${tps}" != "-" ]] && tps_vals+=("${tps}")
+                mem_str="$(extract_mem_from_log "${log_dir}")"
+                printf "${BLUE}| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %${W_TPS}s | %${W_MEM}s | %-${W_SCORE}s |${NC}\r" \
+                    "[SCORE${iter_label}]" "" "${gguf}${CUDA_SUFFIX}" "${dur_str}" "${tps}" "${mem_str}" ""
                 all_scores+=("$(score_one "${mount}" "${gguf}")")
                 ;;
             OOM)
@@ -297,9 +344,15 @@ run_one_model() {
     if (( ok_dur_count > 0 )); then
         mean_dur_str="$(format_duration $(( ok_dur_total / ok_dur_count )))"
     elif [ "${worst_status}" = "OOM" ]; then
-        mean_dur_str="OUT MEM"
+        mean_dur_str="-"
+        mem_str="OOM"
     else
         mean_dur_str="ERROR"
+    fi
+
+    local mean_tps_str="-"
+    if (( ${#tps_vals[@]} > 0 )); then
+        mean_tps_str="$(printf '%s\n' "${tps_vals[@]}" | awk '{sum+=$1; n++} END{printf "%.1f", sum/n}')"
     fi
 
     local scores_str
@@ -309,14 +362,16 @@ run_one_model() {
     local color="${GREEN}"
     [ "${worst_status}" != "OK" ] && color="${RED}"
 
-    printf "${CLR}${color}| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_SCORE}s |${NC}\n" \
-        "${date_str}" "v${VERSION}" "${gguf}${CUDA_SUFFIX}" "${mean_dur_str}" "${scores_str}"
+    printf "${CLR}${color}| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %${W_TPS}s | %${W_MEM}s | %-${W_SCORE}s |${NC}\n" \
+        "${date_str}" "v${VERSION}" "${gguf}${CUDA_SUFFIX}" "${mean_dur_str}" "${mean_tps_str}" "${mem_str}" "${scores_str}"
 
     [ -n "${last_error_output}" ] && printf '%s\n' "${last_error_output}" | tail -n 20 >&2
 
     RESULT_DURATION+=("${mean_dur_str}")
     RESULT_STATUS+=("${worst_status}")
     RESULT_SCORE+=("${scores_str}")
+    RESULT_TPS+=("${mean_tps_str}")
+    RESULT_MEM+=("${mem_str}")
 }
 
 # Invokes the configured scorer CLI with a prompt file.
@@ -381,23 +436,25 @@ write_results() {
     local date_str
     date_str="$(date +%Y-%m-%d)"
 
-    local sd sv sc sdu ss
+    local sd sv sc sdu st sm ss
     sd="$(printf '%.0s-' $(seq 1 $W_DATE))"
     sv="$(printf '%.0s-' $(seq 1 $W_VER))"
     sc="$(printf '%.0s-' $(seq 1 $W_CFG))"
     sdu="$(printf '%.0s-' $(seq 1 $W_DUR))"
+    st="$(printf '%.0s-' $(seq 1 $W_TPS))"
+    sm="$(printf '%.0s-' $(seq 1 $W_MEM))"
     ss="$(printf '%.0s-' $(seq 1 $W_SCORE))"
 
     {
-        printf "| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_SCORE}s |\n" \
-            "Date" "Version" "Configuration" "Duration" "Assessment"
-        printf "|-%s-|-%s-|-%s-|-%s-|-%s-|\n" "${sd}" "${sv}" "${sc}" "${sdu}" "${ss}"
+        printf "| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_TPS}s | %-${W_MEM}s | %-${W_SCORE}s |\n" \
+            "Date" "Version" "Configuration" "Duration" "tok/s" "Memory" "Assessment"
+        printf "|-%s-|-%s-|-%s-|-%s-|-%s-|-%s-|-%s-|\n" "${sd}" "${sv}" "${sc}" "${sdu}" "${st}" "${sm}" "${ss}"
         for i in "${!MODELS[@]}"; do
             local gguf
             gguf="$(basename "${MODELS[$i]}")"
-            printf "| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %-${W_SCORE}s |\n" \
+            printf "| %-${W_DATE}s | %-${W_VER}s | %-${W_CFG}s | %-${W_DUR}s | %${W_TPS}s | %${W_MEM}s | %-${W_SCORE}s |\n" \
                 "${date_str}" "v${VERSION}" "${gguf}${CUDA_SUFFIX}" \
-                "${RESULT_DURATION[$i]}" "${RESULT_SCORE[$i]}"
+                "${RESULT_DURATION[$i]}" "${RESULT_TPS[$i]}" "${RESULT_MEM[$i]}" "${RESULT_SCORE[$i]}"
         done
     } > "${RUN_DIR}/benchmark_results.md"
 }
