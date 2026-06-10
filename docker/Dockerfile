@@ -18,6 +18,9 @@ RUN node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync("pac
     p.scripts.build = "cd packages/tui && npm run build && cd ../ai && npm run build && cd ../agent && npm run build && cd ../coding-agent && npm run build"; \
     fs.writeFileSync("package.json", JSON.stringify(p, null, 2))'
 
+# canvas is a test-only devDep in packages/ai; strip it to avoid native build deps
+RUN node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("packages/ai/package.json")); delete p.devDependencies.canvas; fs.writeFileSync("packages/ai/package.json", JSON.stringify(p,null,2))'
+
 RUN npm install --loglevel=${NPM_LOGLEVEL}
 RUN npm run build --loglevel=${NPM_LOGLEVEL}
 RUN npm prune --omit=dev --loglevel=${NPM_LOGLEVEL}
