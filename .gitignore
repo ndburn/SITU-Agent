@@ -1,7 +1,9 @@
 .DS_Store
 *.code-workspace
+__pycache__
 
 .internal
 CLAUDE.md
 
 tests/tmp/
+tests/datasets/
