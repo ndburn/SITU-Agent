@@ -7,7 +7,7 @@ MOUNT_DIR="$(test_mount_dir)"
 GENERATED_SCRIPT="${MOUNT_DIR}/compute_pi.sh"
 
 DESCRIPTION='Implement a shell script to computes PI using the Gregory-Leibniz series.'
-COMMAND=(-q --mountpoint "${MOUNT_DIR}" -p 'Implement a shell script compute_pi.sh that implements the Gregory-Leibniz series to compute PI with a precision of three decimal places. The script should output the value ofPI with three decimals only, no other text. Make sure it is computed 100% correclty. Think deeply. Make it executable. Do not run it.')
+COMMAND=(-q --mountpoint "${MOUNT_DIR}" -p 'Implement a shell script compute_pi.sh that implements the Gregory-Leibniz series to compute PI with a precision of three decimal places. The script should output the value of PI with three decimals only (e.g. 3.141), no other text. Use awk or bc for floating-point arithmetic. Make sure it is computed 100% correctly. Make it executable. Do not run it.')
 EXPECTED=('3.141' '3.142')
 
 run_agent() {

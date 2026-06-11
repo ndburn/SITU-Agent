@@ -13,7 +13,6 @@ Options:
   -c, --config <file>           Use a specific config file (default: situ.conf).
       --ctx-size <tokens>       Override CTX_SIZE (context window in tokens).
   -h, --help                    Show this help message.
-      --llama-config <file>     Inject a llama.cpp JSON config file into the server.
       --llama-image <image>     Override LLAMA_IMAGE (llama.cpp container image).
   -l, --log <directory>         Write logs to <directory>/llama_<ts>.log and <directory>/situ_<ts>.log.
       --mode <RESTRICTED|NETWORK>  Override MODE from the config file.
@@ -41,7 +40,6 @@ parse_cli_args() {
     RUN_TEST=0
     SILENT=0
     CONFIG_FILE_ARG=""
-    LLAMA_CONFIG_FILE=""
     LOG_DIR=""
     _CLI_TEMPERATURE=""
     _CLI_MODE=""
@@ -60,9 +58,6 @@ parse_cli_args() {
             -p|--prompt)
                 [ $# -ge 2 ] || die "--prompt requires an argument"
                 QUERY="$2"; shift 2 ;;
-            --llama-config)
-                [ $# -ge 2 ] || die "--llama-config requires an argument"
-                LLAMA_CONFIG_FILE="$2"; shift 2 ;;
             -l|--log)
                 [ $# -ge 2 ] || die "--log requires an argument"
                 LOG_DIR="$2"; shift 2 ;;
@@ -116,9 +111,6 @@ validate_situ_config() {
     if [ -n "${LM_HOST:-}" ] && [ "${MODE}" = "RESTRICTED" ]; then
         die "LM_HOST is set but MODE=RESTRICTED. Set MODE=NETWORK in situ.conf to allow external access."
     fi
-    if [ -n "${LLAMA_CONFIG_FILE}" ] && [ -n "${LM_HOST:-}" ]; then
-        echo "Warning: --llama-config is ignored when connecting to an external LM server (LM_HOST is set)." >&2
-    fi
 }
 
 print_banner() {
@@ -140,8 +132,8 @@ print_banner() {
 }
 
 cleanup() {
-    ${CE} rm -f "${LLAMA_NAME}" "${AGENT_NAME}" > /dev/null 2>&1 || true
-    ${CE} network rm "${NET_NAME}" > /dev/null 2>&1 || true
+    timeout 10 ${CE} rm -f "${LLAMA_NAME}" "${AGENT_NAME}" > /dev/null 2>&1 || true
+    timeout 10 ${CE} network rm "${NET_NAME}" > /dev/null 2>&1 || true
     kill_tracked_pids
 }
 
@@ -217,7 +209,6 @@ start_llama_sidecar() {
         --name "${LLAMA_NAME}" \
         "${LLAMA_GPU_ARGS[@]}" \
         --volume "${LMSTUDIO_MODELS}:/models:ro" \
-        "${LLAMA_EXTRA_VOLUMES[@]}" \
         "${LLAMA_IMAGE}" \
         "${LLAMA_EXTRA_ARGS[@]}" \
         --model "/models/${MODEL}" \
@@ -272,11 +263,17 @@ run_test_session() {
 }
 
 run_query_session() {
-    start_situ_log_tail
+    local log_vol=()
+    if [ -n "${LOG_DIR}" ]; then
+        local situ_log="${LOG_DIR}/situ_${LOG_TS}.log"
+        touch "${situ_log}"
+        log_vol=(--volume "${situ_log}:/situ.log")
+    fi
     ${CE} run "${CE_USERNS_ARGS[@]}" --rm \
         --network "${NET_NAME}" \
         --name "${AGENT_NAME}" \
         --volume "${MOUNTPOINT}:/workspace" \
+        "${log_vol[@]}" \
         "${SITU_ENV[@]}" \
         situ:latest \
         pi "$QUERY" &

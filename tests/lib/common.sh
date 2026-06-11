@@ -28,7 +28,43 @@ SITU_SCRIPT="${SITU_REPO_ROOT}/scripts/situ.sh"
 SITU_TMP_DIR="${SITU_TMP_DIR:-${SITU_TESTS_DIR}/tmp}"
 
 run_situ() {
-    "${SITU_SCRIPT}" "$@"
+    local timeout_cmd=()
+    [ -n "${SITU_TIMEOUT:-}" ] && timeout_cmd=(timeout "${SITU_TIMEOUT}")
+    if [ "${SITU_VERBOSE:-0}" != "1" ]; then
+        ${timeout_cmd[@]+"${timeout_cmd[@]}"} "${SITU_SCRIPT}" "$@"
+        return
+    fi
+    local log_dir="${SITU_VERBOSE_LOG_DIR:-${SITU_TMP_DIR}/verbose_logs}"
+    mkdir -p "${log_dir}"
+    _verbose_print_prompt "$@"
+    ${timeout_cmd[@]+"${timeout_cmd[@]}"} "${SITU_SCRIPT}" "$@" --log "${log_dir}"
+    local rc=$?
+    _verbose_dump_logs "${log_dir}"
+    return $rc
+}
+
+_verbose_print_prompt() {
+    local args=("$@") i
+    printf '\n\033[0;34m[verbose] prompt:\033[0m\n' >/dev/tty
+    for (( i=0; i<${#args[@]}; i++ )); do
+        if [[ "${args[$i]}" == "-p" || "${args[$i]}" == "--prompt" ]]; then
+            printf '%s\n' "${args[$((i+1))]}" >/dev/tty
+            return
+        fi
+    done
+    printf '(no prompt — test mode)\n' >/dev/tty
+}
+
+_verbose_dump_logs() {
+    local log_dir="$1" f found=0
+    for f in "${log_dir}"/*.log; do
+        [ -f "$f" ] || continue
+        found=1
+        printf '\n\033[0;34m[verbose] %s:\033[0m\n' "$(basename "$f")" >/dev/tty
+        tr '\r' '\n' < "$f" >/dev/tty
+    done
+    [ "$found" -eq 0 ] && printf '\033[0;33m[verbose] no container logs found\033[0m\n' >/dev/tty
+    printf '\n' >/dev/tty
 }
 
 strip_ansi() {

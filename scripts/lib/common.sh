@@ -2,7 +2,7 @@
 # Shared helpers for scripts/situ.sh and scripts/llamaservice.sh.
 # Source from a script that has already set SCRIPT_DIR.
 
-VERSION="0.11.1"
+VERSION="0.11.2"
 
 die() {
     echo "Error: $*" >&2
@@ -60,12 +60,13 @@ prepare_log_dir() {
     LOG_TS="$(date +%Y%m%d_%H%M%S)"
 }
 
-# Computes llama.cpp runtime args from LLAMA_IMAGE and LLAMA_CONFIG_FILE.
-# Sets: LLAMA_GPU_ARGS, LLAMA_GPU_LAYERS, LLAMA_EXTRA_VOLUMES, LLAMA_EXTRA_ARGS.
+# Computes llama.cpp runtime args from LLAMA_IMAGE and SITU_LLAMA_EXTRA_ARGS.
+# Sets: LLAMA_GPU_ARGS, LLAMA_GPU_LAYERS, LLAMA_EXTRA_ARGS.
+# SITU_LLAMA_EXTRA_ARGS: space-separated extra flags appended verbatim to the llama.cpp CLI
+#   (e.g. "--spec-type draft-mtp --spec-draft-model /models/foo.gguf --spec-draft-n-max 4").
 build_llama_runtime_args() {
     LLAMA_GPU_ARGS=()
     LLAMA_GPU_LAYERS=()
-    LLAMA_EXTRA_VOLUMES=()
     LLAMA_EXTRA_ARGS=()
     if [[ "${LLAMA_IMAGE}" == *cuda* ]]; then
         if [ "${CE}" = "podman" ]; then
@@ -88,10 +89,9 @@ build_llama_runtime_args() {
         phys_cores=${phys_cores:-$(nproc 2>/dev/null || echo 4)}
         LLAMA_GPU_LAYERS=(-t "${phys_cores}" --cache-type-k q8_0 --cache-type-v q8_0)
     fi
-    if [ -n "${LLAMA_CONFIG_FILE:-}" ]; then
-        [ -f "${LLAMA_CONFIG_FILE}" ] || die "llama config file not found: ${LLAMA_CONFIG_FILE}"
-        LLAMA_EXTRA_VOLUMES=(--volume "$(realpath "${LLAMA_CONFIG_FILE}"):/llama.cfg:ro")
-        LLAMA_EXTRA_ARGS=(--config /llama.cfg)
+    if [ -n "${SITU_LLAMA_EXTRA_ARGS:-}" ]; then
+        # shellcheck disable=SC2206
+        LLAMA_EXTRA_ARGS+=(${SITU_LLAMA_EXTRA_ARGS})
     fi
 }
 

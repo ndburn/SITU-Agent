@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# When situ.sh mounts a log file at /situ.log, redirect all output there directly.
+# This bypasses Podman's attach-stream pipeline, which races with --rm cleanup.
+[ -w "/situ.log" ] && exec > /situ.log 2>&1
+
 LM_SERVER_BASE_URL="${LM_SERVER_BASE_URL:-http://host.docker.internal:1234/v1}"
 MODEL="${MODEL:-}"
 LMS_READY_TIMEOUT="${LMS_READY_TIMEOUT:-300}"
