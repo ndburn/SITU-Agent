@@ -11,7 +11,7 @@
           "contextWindow": "${CTX_SIZE}",
           "maxTokens": "${MAX_TOKENS}",
           "reasoning": "${REASONING}",
-          "input": ["text"]
+          "input": ["text", "image"]
         }
       ]
     }

@@ -132,8 +132,10 @@ print_banner() {
 }
 
 cleanup() {
-    timeout 10 ${CE} rm -f "${LLAMA_NAME}" "${AGENT_NAME}" > /dev/null 2>&1 || true
-    timeout 10 ${CE} network rm "${NET_NAME}" > /dev/null 2>&1 || true
+    # Disable further INT/TERM so repeated Ctrl+C can't interrupt our own teardown.
+    trap '' INT TERM
+    ${CE} rm -f "${LLAMA_NAME}" "${AGENT_NAME}" > /dev/null 2>&1 || true
+    ${CE} network rm "${NET_NAME}" > /dev/null 2>&1 || true
     kill_tracked_pids
 }
 
@@ -269,6 +271,12 @@ run_query_session() {
         touch "${situ_log}"
         log_vol=(--volume "${situ_log}:/situ.log")
     fi
+    # SITU_PI_EXTRA_ARGS: space-separated extra args prepended to pi (e.g. "@file.jpg" attachments).
+    local pi_extra_args=()
+    if [ -n "${SITU_PI_EXTRA_ARGS:-}" ]; then
+        # shellcheck disable=SC2206
+        pi_extra_args=(${SITU_PI_EXTRA_ARGS})
+    fi
     ${CE} run "${CE_USERNS_ARGS[@]}" --rm \
         --network "${NET_NAME}" \
         --name "${AGENT_NAME}" \
@@ -276,7 +284,7 @@ run_query_session() {
         "${log_vol[@]}" \
         "${SITU_ENV[@]}" \
         situ:latest \
-        pi "$QUERY" &
+        pi "${pi_extra_args[@]}" "$QUERY" &
     local pid=$!
     LOG_PIDS+=($pid)
     wait $pid
@@ -284,13 +292,18 @@ run_query_session() {
 
 run_interactive_session() {
     start_situ_log_tail
+    local pi_extra_args=()
+    if [ -n "${SITU_PI_EXTRA_ARGS:-}" ]; then
+        # shellcheck disable=SC2206
+        pi_extra_args=(${SITU_PI_EXTRA_ARGS})
+    fi
     ${CE} run "${CE_USERNS_ARGS[@]}" --rm -it \
         --network "${NET_NAME}" \
         --name "${AGENT_NAME}" \
         --volume "${MOUNTPOINT}:/workspace" \
         "${SITU_ENV[@]}" \
         situ:latest \
-        pi
+        pi "${pi_extra_args[@]}"
 }
 
 main() {

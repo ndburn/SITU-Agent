@@ -89,6 +89,9 @@ build_llama_runtime_args() {
         phys_cores=${phys_cores:-$(nproc 2>/dev/null || echo 4)}
         LLAMA_GPU_LAYERS=(-t "${phys_cores}" --cache-type-k q8_0 --cache-type-v q8_0)
     fi
+    if [ -n "${MMPROJ:-}" ]; then
+        LLAMA_EXTRA_ARGS+=(--mmproj "/models/${MMPROJ}")
+    fi
     if [ -n "${SITU_LLAMA_EXTRA_ARGS:-}" ]; then
         # shellcheck disable=SC2206
         LLAMA_EXTRA_ARGS+=(${SITU_LLAMA_EXTRA_ARGS})

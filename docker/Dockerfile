@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fd-find \
     ripgrep \
+    poppler-utils \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     && rm -rf /var/lib/apt/lists/*
