@@ -2,7 +2,7 @@
 # Shared helpers for scripts/situ.sh and scripts/llamaservice.sh.
 # Source from a script that has already set SCRIPT_DIR.
 
-VERSION="0.12.0"
+VERSION="0.12.1"
 
 die() {
     echo "Error: $*" >&2
@@ -92,6 +92,24 @@ build_llama_runtime_args() {
     if [ -n "${MMPROJ:-}" ]; then
         LLAMA_EXTRA_ARGS+=(--mmproj "/models/${MMPROJ}")
     fi
+    # Reasoning/Thinking aus situ.conf (REASONING, REASONING_BUDGET_MAXPERCENT,
+    # REASONING_BUDGET_MESSAGE, MAX_TOKENS). Hier zentral -> gilt fuer situ.sh UND
+    # llamaservice.sh, die beide build_llama_runtime_args + LLAMA_EXTRA_ARGS nutzen.
+    local reasoning_budget
+    if [ "${REASONING:-false}" = "false" ]; then
+        LLAMA_EXTRA_ARGS+=(--reasoning off --reasoning-budget 0)
+    else
+        if [ "${REASONING_BUDGET_MAXPERCENT:-25}" -lt 0 ]; then
+            reasoning_budget=-1
+        else
+            reasoning_budget=$(( ${MAX_TOKENS:-16384} * ${REASONING_BUDGET_MAXPERCENT:-25} / 100 ))
+        fi
+        local _default_budget_msg=$'\n\nLet me now write the solution.'
+        LLAMA_EXTRA_ARGS+=(--reasoning on \
+            --reasoning-budget "${reasoning_budget}" \
+            --reasoning-budget-message "${REASONING_BUDGET_MESSAGE:-${_default_budget_msg}}")
+    fi
+    # SITU_LLAMA_EXTRA_ARGS zuletzt -> manuelle Overrides gewinnen ("last wins").
     if [ -n "${SITU_LLAMA_EXTRA_ARGS:-}" ]; then
         # shellcheck disable=SC2206
         LLAMA_EXTRA_ARGS+=(${SITU_LLAMA_EXTRA_ARGS})

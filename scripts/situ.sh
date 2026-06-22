@@ -192,21 +192,7 @@ create_pod() {
 
 start_llama_sidecar() {
     require_model_file
-    build_llama_runtime_args
-    local reasoning_flag reasoning_budget reasoning_budget_msg_args=()
-    if [ "${REASONING:-false}" = "false" ]; then
-        reasoning_flag="off"
-        reasoning_budget=0
-    else
-        reasoning_flag="on"
-        if [ "${REASONING_BUDGET_MAXPERCENT:-25}" -lt 0 ]; then
-            reasoning_budget=-1
-        else
-            reasoning_budget=$(( ${MAX_TOKENS:-16384} * ${REASONING_BUDGET_MAXPERCENT:-25} / 100 ))
-        fi
-        local _default_budget_msg=$'\n\nLet me now write the solution.'
-        reasoning_budget_msg_args=(--reasoning-budget-message "${REASONING_BUDGET_MESSAGE:-${_default_budget_msg}}")
-    fi
+    build_llama_runtime_args   # enthaelt jetzt auch die Reasoning-Flags (common.sh)
     ${CE} run "${CE_USERNS_ARGS[@]}" --network "${NET_NAME}" -d \
         --name "${LLAMA_NAME}" \
         "${LLAMA_GPU_ARGS[@]}" \
@@ -218,9 +204,6 @@ start_llama_sidecar() {
         --host 0.0.0.0 \
         --ctx-size "${CTX_SIZE}" \
         --temp "${TEMPERATURE}" \
-        --reasoning "${reasoning_flag}" \
-        --reasoning-budget "${reasoning_budget}" \
-        "${reasoning_budget_msg_args[@]}" \
         --parallel "${PARALLEL}" \
         "${LLAMA_GPU_LAYERS[@]}" > /dev/null
     if [ -n "${LOG_DIR}" ]; then
