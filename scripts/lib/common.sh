@@ -2,7 +2,7 @@
 # Shared helpers for scripts/situ.sh and scripts/llamaservice.sh.
 # Source from a script that has already set SCRIPT_DIR.
 
-VERSION="0.11.2"
+VERSION="0.12.0"
 
 die() {
     echo "Error: $*" >&2
